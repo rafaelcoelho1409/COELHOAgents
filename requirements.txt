@@ -1,0 +1,15 @@
+ipykernel
+python-dotenv
+streamlit
+streamlit_extras
+ollama
+langgraph
+langsmith
+langchain
+langchain_ollama
+langchain_groq
+langchain_community
+langchain_experimental
+langchain-qdrant
+qdrant-client
+duckduckgo-search
