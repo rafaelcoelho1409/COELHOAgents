@@ -31,8 +31,11 @@ if view_graph:
 
 snapshot = role.graph.get_state(role.config)
 #for msg in st.session_state["history"].messages:
-for msg in snapshot.values["messages"]:
-    st.chat_message(msg.type).write(msg.content)
+try:
+    for msg in snapshot.values["messages"]:
+        st.chat_message(msg.type).write(msg.content)
+except:
+    pass
 
 if prompt := st.chat_input():
     if st.session_state["memory_filter"] == False:
