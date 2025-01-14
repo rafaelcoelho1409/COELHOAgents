@@ -604,7 +604,9 @@ class CustomerSupport:
                 _printed.add(message.id)
     
     def user_info(self, state: State):
-        return {"user_info": self.fetch_user_flight_information.invoke({}, self.config)}
+        return {"user_info": self.fetch_user_flight_information.invoke(
+            {}, 
+            self.config)}
     
     def create_tool_node_with_fallback(self, tools: list) -> dict:
         return ToolNode(tools).with_fallbacks(
