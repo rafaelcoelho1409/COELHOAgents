@@ -14,21 +14,26 @@ st.set_page_config(
     page_icon = ":material/home:",
     layout = "wide")
 
-home = st.Page(
-    "applications/home.py", 
-    title = "Home", 
-    icon = ":material/home:")
-test = st.Page(
-    "applications/simple_assistant.py", 
-    title = "Simple Assistant", 
-    icon = ":material/edit:")
+pages_dict = {
+    #"Home": "applications/home.py",
+    "Simple Assistant": "applications/simple_assistant.py",
+    "Customer Support": "applications/customer_support.py"
+}
+pages = {
+    "Home": st.Page("applications/home.py", title = "Home", icon = ":material/home:")} | {
+    name: st.Page(path, title = name, icon = ":material/edit:")
+    for name, path 
+    in pages_dict.items()}
 
 
 pg = st.navigation({
     "COELHO Agents by Rafael Coelho": [
-        home],
+        pages["Home"]],
     "Applications": [
-        test
+        pages["Simple Assistant"]
+    ],
+    "Playground": [
+        pages["Customer Support"]
     ]
 })
 

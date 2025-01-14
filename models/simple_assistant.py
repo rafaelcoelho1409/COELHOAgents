@@ -6,15 +6,10 @@ from langchain_groq import ChatGroq
 from langchain_ollama import ChatOllama
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchResults
-from langchain_core.messages import ToolMessage, BaseMessage
+from langchain_core.messages import ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-
-llm_model = {
-    "Groq": ChatGroq,
-    "Ollama": ChatOllama
-}
 
 ###STRUCTURES
 class State(TypedDict):
@@ -43,6 +38,7 @@ class BasicToolNode:
             )
         return {"messages": outputs}
 
+
 ###>>>---001 - Simple Assistant---<<<###
 class SimpleAssistant:
     def __init__(self, framework, temperature_filter, model_name, shared_memory):
@@ -64,12 +60,15 @@ class SimpleAssistant:
         self.llm_with_tools = self.llm.bind_tools(self.tools)
 
     def load_model(self):
-        #GRAPH
+        ###GRAPH
         self.graph_builder = StateGraph(State)
         self.graph_builder.add_node("chatbot", self.chatbot)
         #self.tool_node = BasicToolNode(tools = [self.tool])
         self.tool_node = ToolNode(tools = [self.tool])
-        self.graph_builder.add_node("tools", self.tool_node)
+        self.graph_builder.add_node(
+            "tools",
+            self.tool_node
+            )
         self.graph_builder.add_conditional_edges(
             "chatbot",
             tools_condition,

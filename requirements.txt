@@ -8,8 +8,10 @@ langsmith
 langchain
 langchain_ollama
 langchain_groq
+langchain_huggingface
 langchain_community
 langchain_experimental
-langchain-qdrant
+langchain_qdrant
 qdrant-client
 duckduckgo-search
+pandas
