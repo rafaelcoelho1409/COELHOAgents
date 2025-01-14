@@ -153,7 +153,8 @@ def settings():
             models_option = st.selectbox(
                 label = "Groq Models", 
                 options = [
-                    "llama-3.3-70b-versatile"
+                    "llama-3.3-70b-versatile",
+                    "llama-3.1-8b-instant"
                 ])
             temperature_filter = st.slider(
                 label = "Temperature",

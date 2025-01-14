@@ -1,16 +1,11 @@
 import streamlit as st
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import ToolMessage
 from functions import (
     check_model_and_temperature,
     initialize_shared_memory,
     view_application_graph
 )
-from models.customer_support import (
-    CustomerSupport,
-    customer_support_load_database,
-    customer_support_update_dates
-)
+from drafts.customer_support_models import CustomerSupport
 
 
 initialize_shared_memory()

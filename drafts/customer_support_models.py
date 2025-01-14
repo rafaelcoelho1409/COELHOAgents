@@ -69,7 +69,7 @@ class VectorStoreRetriever:
         self._docs = docs
         self._model = embeddings_model
     @classmethod
-    def from_docs(cls, docs: list[dict], model_name: str = "qwen2.5:7b-instruct-q4_1"):
+    def from_docs(cls, docs: list[dict], model_name: str):
         """
         Build the retriever from a list of documents using an OllamaEmbeddings model.
         Each doc must have a 'page_content' key with text to embed.
