@@ -18,7 +18,12 @@ if model_temperature_checker == False:
 language_option = st.sidebar.selectbox(
     label = "Language",
     options = [
-        "Python"
+        "Python",
+        "Java",
+        "Go",
+        "C++",
+        "C#",
+        ".NET"
     ]
 )
 
@@ -30,11 +35,18 @@ role = SoftwareDeveloper(
 )
 role.load_model(language_option)
 
-#snapshot = role.graph.get_state(role.config)
+view_graph = st.sidebar.button(
+    label = "View application graph",
+    use_container_width = True
+)
+if view_graph:
+    view_application_graph(role.graph)
+
+snapshot = role.graph.get_state(role.config)
 #for msg in st.session_state["history"].messages:
 try:
-    #for msg in snapshot.values["messages"]:
-    for msg in st.session_state["history"].messages:
+    for msg in snapshot.values["messages"]:
+    #for msg in st.session_state["history"].messages:
         st.chat_message(msg.type).write(msg.content)
 except:
     pass
@@ -42,4 +54,4 @@ except:
 if prompt := st.chat_input():
     if st.session_state["memory_filter"] == False:
         st.session_state["shared_memory"] = MemorySaver()
-    role.stream_graph_updates_test(language_option, prompt)
+    role.stream_graph_updates(language_option, prompt)

@@ -109,5 +109,9 @@ class SimpleAssistant:
             stream_mode = "values"
         )
         for event in events:
-            st.chat_message(event["messages"][-1].type).markdown(event["messages"][-1].content)
+            st.chat_message(
+                event["messages"][-1].type
+            ).markdown(
+                event["messages"][-1].content
+            )
 

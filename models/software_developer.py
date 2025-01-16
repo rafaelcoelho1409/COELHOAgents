@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 from typing import List
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
@@ -9,19 +10,23 @@ from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph, START
 
 
-
 ###STRUCTURES
 #Data model
 class Code(BaseModel):
     """
     Schema for code solutions to questions about the programming language.
     """
-    prefix: str = Field(description = "Description of the problem and approach")
-    imports: str = Field(description = "Code block import statements")
-    code: str = Field(description = "Code block not including import statements")
+    prefix: str = Field(description = """
+        Description of the problem and approach""")
+    imports: str = Field(description = """
+        Code block import statements."""
+        )
+    code: str = Field(description = """
+        Code block not including import statements.""" 
+        )
 
 
-class GraphState(TypedDict):
+class State(TypedDict):
     """
     Represents the state of our graph.
 
@@ -56,6 +61,7 @@ class SoftwareDeveloper:
     def load_model(self, language):
         self.language = language
         # Grader prompt
+        # Grader prompt
         self.code_gen_prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -63,12 +69,14 @@ class SoftwareDeveloper:
                     """
                     You are a coding assistant with expertise in the following language:  
                     \n ------- \n  {language} \n ------- \n 
-                    Answer the user question based on the programming language. 
-                    Ensure any code you provide can be executed \n 
-                    with all required imports and variables defined. 
+                    Answer the user question based on the programming language. \n
+                    Ensure any code you provide can be executed 
+                    with all required imports and variables defined. \n 
                     Structure your answer with a description of the code solution. \n
-                    Then list the imports. And finally list the functioning code block.
-                    Here is the user question:""",
+                    Then list the imports. And finally list the functioning code block. \n
+                    Format the code to be shown very organized in a markdown. \n
+                    Here is the user question:
+                    """,
                 ),
                 ("placeholder", "{messages}"),
             ]
@@ -79,39 +87,17 @@ class SoftwareDeveloper:
         # Reflect
         # flag = 'reflect'
         self.flag = "do not reflect"
-        self.workflow = StateGraph(GraphState)
-        # Define the nodes
-        self.workflow.add_node("generate", self.generate)  # generation solution
-        self.workflow.add_node("check_code", self.code_check)  # check code
-        self.workflow.add_node("reflect", self.reflect)  # reflect
-        # Build graph
-        self.workflow.add_edge(START, "generate")
-        self.workflow.add_edge("generate", "check_code")
-        self.workflow.add_conditional_edges(
-            "check_code",
-            self.decide_to_finish,
-            {
-                "end": END,
-                "reflect": "reflect",
-                "generate": "generate",
-            },
-        )
-        self.workflow.add_edge("reflect", "generate")
+        self.workflow = StateGraph(State)
+        ###NODES
+        self.workflow.add_node("llm_invoke", self.llm_invoke)
+        ###EDGES
+        self.workflow.add_edge(START, "llm_invoke")
+        self.workflow.add_edge("llm_invoke", END)
         self.graph = self.workflow.compile(checkpointer = self.shared_memory)
 
-    ### Nodes
-    def generate(self, state: GraphState):
-        """
-        Generate a code solution
-
-        Args:
-            state (dict): The current graph state
-
-        Returns:
-            state (dict): New key added to state, generation
-        """
+    ###Nodes
+    def llm_invoke(self, state: State):
         st.chat_message("Tool").info("GENERATING CODE SOLUTION")
-        # State
         messages = state["messages"]
         iterations = state["iterations"]
         error = state["error"]
@@ -123,131 +109,49 @@ class SoftwareDeveloper:
                     "Now, try again. Invoke the code tool to structure the output with a prefix, imports, and code block:",
                 )
             ]
-
-        # Solution
-        code_solution = self.code_gen_chain.invoke(
-            {"language": self.language, "messages": messages}
-        )
+        code_solution = self.code_gen_chain.invoke({
+            "language": self.language,
+            "messages": messages
+        })
         messages += [
             (
                 "assistant",
-                f"{code_solution.prefix} \n Imports: {code_solution.imports} \n Code: {code_solution.code}",
+                f"""
+                **Description:**\n{code_solution.prefix}\n
+                **Imports:**\n```{self.language.lower()}\n{code_solution.imports}\n```\n
+                **Code:**\n```{self.language.lower()}\n{code_solution.code}\n```\n
+                """,
             )
         ]
         # Increment
         iterations = iterations + 1
         return {"generation": code_solution, "messages": messages, "iterations": iterations}
-    
-    def code_check(self, state: GraphState):
-        """
-        Check code
 
-        Args:
-            state (dict): The current graph state
-
-        Returns:
-            state (dict): New key added to state, error
-        """
-        st.chat_message("Tool").info("CHECKING CODE")
-        # State
-        messages = state["messages"]
-        code_solution = state["generation"]
-        iterations = state["iterations"]
-        # Get solution components
-        imports = code_solution.imports
-        code = code_solution.code
-        # Check imports
-        try:
-            exec(imports)
-        except Exception as e:
-            st.chat_message("Tool").error("CODE IMPORT CHECK: FAILED")
-            error_message = [("user", f"Your solution failed the import test: {e}")]
-            messages += error_message
-            return {
-                "generation": code_solution,
-                "messages": messages,
-                "iterations": iterations,
-                "error": "yes",
-            }
-        # Check execution
-        try:
-            exec(imports + "\n" + code)
-        except Exception as e:
-            st.chat_message("Tool").error("CODE BLOCK CHECK: FAILED")
-            error_message = [("user", f"Your solution failed the code execution test: {e}")]
-            messages += error_message
-            return {
-                "generation": code_solution,
-                "messages": messages,
-                "iterations": iterations,
-                "error": "yes",
-            }
-        # No errors
-        st.chat_message("Tool").success("NO CODE TEST FAILURES")
-        return {
-            "generation": code_solution,
-            "messages": messages,
-            "iterations": iterations,
-            "error": "no",
-        }
-    
-    def reflect(self, state: GraphState):
-        """
-        Reflect on errors
-
-        Args:
-            state (dict): The current graph state
-
-        Returns:
-            state (dict): New key added to state, generation
-        """
-        st.chat_message("Tool").info("GENERATING CODE SOLUTION")
-        # State
-        messages = state["messages"]
-        iterations = state["iterations"]
-        code_solution = state["generation"]
-        # Prompt reflection
-        # Add reflection
-        reflections = self.code_gen_chain.invoke(
-            {"language": self.language, "messages": messages}
+    def stream_graph_updates(self, language, user_input):
+        # The config is the **second positional argument** to stream() or invoke()!
+        events = self.graph.stream(
+            {
+                "language": language, 
+                "messages": [("user", user_input)], 
+                "iterations": 0, 
+                "error": ""},
+            self.config, 
+            stream_mode = "values"
         )
-        messages += [("assistant", f"Here are reflections on the error: {reflections}")]
-        return {"generation": code_solution, "messages": messages, "iterations": iterations}
-    
-    ### Edges
-    def decide_to_finish(self, state: GraphState):
-        """
-        Determines whether to finish.
-
-        Args:
-            state (dict): The current graph state
-
-        Returns:
-            str: Next node to call
-        """
-        error = state["error"]
-        iterations = state["iterations"]
-        if error == "no" or iterations == self.max_iterations:
-            st.chat_message("Tool").info("DECISION: FINISH")
-            return "end"
-        else:
-            st.chat_message("Tool").info("DECISION: RE-TRY SOLUTION")
-            if self.flag == "reflect":
-                return "reflect"
-            else:
-                return "generate"
-
-    def stream_graph_updates_test(self, language, user_input):
-        st.chat_message("human").write(user_input)
-        st.chat_message("assistant").write(
-            self.graph.invoke(
-                {
-                    "language": language, 
-                    "messages": [("user", user_input)], 
-                    "iterations": 0, 
-                    "error": ""},
-                self.config
+        for event in events:
+            #st.write(event["messages"])
+            st.chat_message(
+                event["messages"][-1][0]#.type
+            ).markdown(
+                event["messages"][-1][1]#.content
             )
-        )
-
-#How can I build a simple computer vision software using MediaPipe?
+        #response = self.graph.invoke(
+        #        {
+        #            "language": language, 
+        #            "messages": [("user", user_input)], 
+        #            "iterations": 0, 
+        #            "error": ""},
+        #        self.config
+        #    )
+        #st.chat_message("human").write(user_input)
+        #st.chat_message("assistant").write(response)
