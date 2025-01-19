@@ -2,15 +2,21 @@ import streamlit as st
 import subprocess
 import os
 import re
+from dotenv import load_dotenv
 from typing import List, Annotated
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
 from langchain_ollama import ChatOllama
 from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
+
+load_dotenv()
 
 
 ###STRUCTURES
@@ -34,6 +40,14 @@ class Code(BaseModel):
         Codes must be into a list of strings.""" 
         )
 
+class CodeBlock(BaseModel):
+    """
+    Represents the code block to be executed.
+
+    Attributes:
+        code : Code block
+    """
+    code: str
 
 class State(TypedDict):
     """
@@ -50,6 +64,7 @@ class State(TypedDict):
     error: str
     error_message: str
     messages: List
+    streamlit_actions: List
     generation: str
     iterations: int
     technology: str
@@ -64,13 +79,24 @@ class SoftwareDeveloper:
             "callbacks": [StreamlitCallbackHandler(st.container())]}
         self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI
         }
         self.llm_model = self.llm_framework[framework]
-        self.llm = self.llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            self.llm = self.llm_model(
+                model = model_name,
+                temperature = temperature_filter,
+            )
 
     def load_model(self, technology, project_folder):
         self.project_folder = project_folder
@@ -137,20 +163,29 @@ class SoftwareDeveloper:
                     These are all files created: \n
                     {filenames} \n\n
                     Based on this technology, return all necessary commands to run the main file. \n
-                    Return only the commands to be executed in the terminal. \n
+                    Return only the commands to be executed in the terminal,
+                    only the commands inside a code block and nothing more. \n
+                    Make sure the commands can be run in only one row. \n
+                    In the commands below, you need to put "[...]/" before EVERY file names (a special attention here, please),\n
+                    because this "[...]" will be replace by the real folder name using Python .replace method.
                     The commands need to be in the following standard format: \n
-                    ```{technology}\nCOMMANDS HERE```\n
+                    ```{technology}\nCOMMANDS HERE```\n\n
                     """,
                 ),
                 ("placeholder", "{messages}"),
             ]
         )
-        code_runner_chain = code_runner_prompt | self.llm
+        code_runner_chain = code_runner_prompt | self.llm.with_structured_output(
+            CodeBlock,
+            #method = "json_mode",
+            #include_raw = True
+        )
         return code_runner_chain
     
     ###Nodes
     def check_install(self, state: State):
         messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
         error = state["error"]
         technology = state["technology"]
         check_install_commands = {
@@ -180,6 +215,7 @@ class SoftwareDeveloper:
                     """
                 )
             ]
+            streamlit_actions += ["error"]
             error = "yes"
         return {"messages": messages, "error": error}
 
@@ -194,6 +230,7 @@ class SoftwareDeveloper:
     def generate_code(self, state: State):
         #st.chat_message("Tool").info("GENERATING CODE SOLUTION")
         messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
         iterations = state["iterations"]
         error = state["error"]
         # We have been routed back to generation with an error
@@ -207,6 +244,7 @@ class SoftwareDeveloper:
                     imports, and code block:""",
                 )
             ]
+            streamlit_actions += ["write"]
         code_solution = self.code_gen_chain.invoke({
             "technology": self.technology,
             "messages": messages
@@ -233,45 +271,70 @@ class SoftwareDeveloper:
                 )
             )
         ]
+        streamlit_actions += ["write"]
         # Increment
         iterations = iterations + 1
         return {"generation": code_solution, "messages": messages, "iterations": iterations}
     
     def run_code(self, state: State):
         messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
         code_solution = state["generation"]
+        technology = state["technology"]
         code_runner = self.code_runner_chain.invoke({
             "technology": self.technology,
             "messages": messages,
             "filenames": code_solution.filenames
         })
-        for filename in code_solution.filenames:
-            #code_runner_content = code_runner.content.replace(filename, str(self.project_folder / filename))
-            code_runner_content = code_runner.content.replace(filename.strip()[0], str(self.project_folder / filename.strip()[0]))
+        #st.write(code_runner)
+        #st.stop()
+        code_runner_content = code_runner.code#["code"]
+        #for filename in code_solution.filenames:
+        code_runner_content = code_runner_content.replace(
+            "[...]", 
+            str(self.project_folder)
+            )
         messages += [
             (
                 "assistant",
                 f"""
-                {code_runner_content}
+                ```{technology}\n
+                {code_runner_content}\n
+                ```
                 """
             )
         ]
-        st.write(code_runner_content)
-        st.stop()
-        for command in code_runner_content.split("\n"):
-            command_status = subprocess.run(
-                command.split(),
-                shell = True,
-                text = True
-            )
-            #messages += [
-            #    (
-            #        "assistant",
-            #        f"""
-            #        {command_status.stdout}
-            #        """
-            #    )
-            #]
+        streamlit_actions += ["write"]
+        command_status = subprocess.run(
+            code_runner_content,
+            shell = True,
+            capture_output = True,
+            text = True
+        )
+        if command_status.returncode == 0:
+            messages += [
+                (
+                    "assistant",
+                    f"""
+                    The code was executed successfully.\n
+                    Output: {command_status.stdout}
+                    """
+                )
+            ]
+            streamlit_actions += ["success"]
+        else:
+            messages += [
+                (
+                    "assistant",
+                    f"""
+                    The code was not executed successfully.\n
+                    Output: {command_status.stderr}
+                    """
+                )
+            ]
+            print(code_runner_content)
+            print(command_status.stderr)
+            streamlit_actions += ["error"]
         return {"messages": messages}
 
     def stream_graph_updates(self, technology, project_name, user_input):
@@ -279,6 +342,7 @@ class SoftwareDeveloper:
         events = self.graph.stream(
             {
                 "messages": [("user", user_input)], 
+                "streamlit_actions": ["write"],
                 "iterations": 0, 
                 "error": "",
                 "error_message": "",
@@ -288,9 +352,8 @@ class SoftwareDeveloper:
             stream_mode = "values"
         )
         for event in events:
-            #st.write(event["messages"])
             st.chat_message(
                 event["messages"][-1][0]#.type
-            ).markdown(
+            ).__getattribute__(event["streamlit_actions"][-1])(
                 event["messages"][-1][1]#.content
             )

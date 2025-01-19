@@ -1,15 +1,22 @@
 import streamlit as st
 import json
+import os
+from dotenv import load_dotenv
 from typing import Annotated
 from typing_extensions import TypedDict
-from langchain_groq import ChatGroq
+from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
 from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_community.tools.ddg_search.tool import DuckDuckGoSearchResults
 from langchain_core.messages import ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+
+load_dotenv()
 
 ###STRUCTURES
 class State(TypedDict):
@@ -48,13 +55,24 @@ class SimpleAssistant:
             "callbacks": [StreamlitCallbackHandler(st.container())]}
         self.llm_framework = {
             "Groq": ChatGroq,
-            "Ollama": ChatOllama
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI
         }
         self.llm_model = self.llm_framework[framework]
-        self.llm = self.llm_model(
-            model = model_name,
-            temperature = temperature_filter
-        )
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            self.llm = self.llm_model(
+                model = model_name,
+                temperature = temperature_filter,
+            )
         self.tool = DuckDuckGoSearchResults(output_format = "list")
         self.tools = [self.tool]
         self.llm_with_tools = self.llm.bind_tools(self.tools)

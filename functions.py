@@ -36,7 +36,12 @@ def reload_active_models():
                 active_models_text += f"* {model_name['model']}\n"
         else:
             active_models_text += "No active models."
-    elif st.session_state["framework"] == "Groq":
+    elif st.session_state["framework"] in [
+        "Groq",
+        "Google Generative AI",
+        "SambaNova",
+        "Scaleway"
+        ]:
         active_models_text += st.session_state["model_name"]
     active_models_container.info(active_models_text)
 
@@ -58,10 +63,36 @@ def settings():
         label = "Framework",
         options = [
             "Groq",
-            "Ollama"
+            "Google Generative AI",
+            "Ollama",
+            "SambaNova",
+            "Scaleway",
         ]
     )
     st.session_state["framework"] = framework_option
+    provider_model_dict = {
+        "Groq": [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "gemma2-9b-it",
+            "llama-3.2-3b-preview",
+            "mixtral-8x7b-32768"
+                ], 
+        "Google Generative AI": [
+            "gemini-1.5-pro",
+            "gemini-2.0-flash"
+        ],
+        "SambaNova": [
+            "Meta-Llama-3.3-70B-Instruct",
+            "Meta-Llama-3.1-70B-Instruct",
+            "Qwen2.5-72B-Instruct",
+            "QwQ-32B-Preview",
+        ],
+        "Scaleway": [
+            "llama-3.3-70b-instruct",
+            "llama-3.1-8b-instruct"
+        ]
+    }
     if framework_option == "Ollama":
         with st.form("Settings Ollama"):
             models_options = sorted(
@@ -129,14 +160,14 @@ def settings():
             if submit_button:
                 if "model_name" in st.session_state:
                     if st.session_state["model_name"] != models_filter:
-                        subprocess.check_call([
+                        subprocess.run([
                             "ollama",
                             "stop",
                             st.session_state["model_name"]
                         ],
                         )
                 else:
-                    subprocess.check_call([
+                    subprocess.run([
                         "ollama",
                         "stop",
                         models_filter
@@ -148,14 +179,16 @@ def settings():
                 st.session_state["vector_database_filter"] = vector_database_filter
                 st.session_state["rag_filter"] = rag_filter
                 st.rerun()
-    elif framework_option == "Groq":
-        with st.form("Settings Groq"):
+    elif framework_option in [
+        "Groq",
+        "Google Generative AI",
+        "SambaNova",
+        "Scaleway"
+    ]:
+        with st.form(f"Settings {framework_option}"):
             models_option = st.selectbox(
-                label = "Groq Models", 
-                options = [
-                    "llama-3.3-70b-versatile",
-                    "llama-3.1-8b-instant"
-                ])
+                label = f"{framework_option} Models", 
+                options = provider_model_dict[framework_option])
             temperature_filter = st.slider(
                 label = "Temperature",
                 min_value = 0.00,

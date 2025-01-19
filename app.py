@@ -36,6 +36,9 @@ pg = st.navigation({
 
 })
 
+with open("style.css") as css:
+    st.html(f"<style>{css.read()}</style>")
+
 with st.container(key = "app_title"):
     st.title(("$$\\textbf{" + pg.title + "}$$").replace("&", "\&"))
 

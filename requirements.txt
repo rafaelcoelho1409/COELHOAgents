@@ -9,10 +9,13 @@ langchain
 langchain_ollama
 langchain_groq
 langchain_huggingface
+langchain_google_genai
+langchain_openai
 langchain_community
 langchain_experimental
 langchain_qdrant
 qdrant-client
+sseclient-py
 duckduckgo-search
 pandas
 bs4

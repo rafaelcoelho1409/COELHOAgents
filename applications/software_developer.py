@@ -40,7 +40,7 @@ with st.sidebar.form("Project Settings"):
         use_container_width = True)
 if submit_project_settings:
     if project_name == "":
-        st.info("Please enter a project name.")
+        st.sidebar.info("Please enter a project name.")
         st.stop()
     else:
         home_folder = Path.home()
@@ -50,12 +50,12 @@ if submit_project_settings:
         st.session_state["technology_option"] = technology_option
         st.session_state["project_name"] = project_name
         st.session_state["project_folder"] = project_folder
-        st.success(f"Project {project_name} created/loaded successfully.")
+        st.sidebar.success(f"Project {project_name} created/loaded successfully.")
 try:
     project_name = st.session_state["project_name"]
     st.sidebar.info(f"**Project Name:** {project_name}")
 except:
-    st.info("Please create/load a project.")
+    st.sidebar.info("Please create/load a project.")
     st.stop()
 
 
@@ -65,14 +65,10 @@ role = SoftwareDeveloper(
     st.session_state["model_name"],
     st.session_state["shared_memory"]
 )
-try:
-    role.load_model(
-        technology_option,
-        st.session_state["project_folder"],
-        )
-except:
-    st.info("Please create/load a project.")
-    st.stop()
+role.load_model(
+    technology_option,
+    st.session_state["project_folder"],
+    )
 
 view_graph = st.sidebar.button(
     label = "View application graph",
