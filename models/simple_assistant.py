@@ -126,10 +126,13 @@ class SimpleAssistant:
             self.config, 
             stream_mode = "values"
         )
-        for event in events:
-            st.chat_message(
-                event["messages"][-1].type
-            ).markdown(
-                event["messages"][-1].content
-            )
+        for i, event in enumerate(events):
+            if i == 0:
+                pass
+            else:
+                st.chat_message(
+                    event["messages"][-1].type
+                ).markdown(
+                    event["messages"][-1].content
+                )
 

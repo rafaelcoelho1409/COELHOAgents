@@ -1,6 +1,7 @@
 import streamlit as st
 from langgraph.checkpoint.memory import MemorySaver
 import os
+import json
 from pathlib import Path
 from functions import (
     check_model_and_temperature,
@@ -12,6 +13,9 @@ from models.software_developer import SoftwareDeveloper
 
 initialize_shared_memory()
 
+with open("technologies.json") as file:
+    technologies_json = json.load(file)
+
 model_temperature_checker = check_model_and_temperature()
 if model_temperature_checker == False:
     st.info("Choose model and temperature to start running COELHO GenAI models.")
@@ -21,16 +25,7 @@ if model_temperature_checker == False:
 with st.sidebar.form("Project Settings"):
     technology_option = st.selectbox(
         label = "Technology",
-        options = [
-            "Python",
-            "Java",
-            "Go",
-            "C++",
-            "C#",
-            ".NET",
-            "MySQL",
-            "PostgreSQL"
-        ]
+        options = list(technologies_json.keys())
     )
     project_name = st.text_input(
         label = "Project Name",    

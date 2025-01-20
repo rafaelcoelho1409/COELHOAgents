@@ -1,7 +1,7 @@
 import streamlit as st
 import subprocess
 import os
-import re
+import json
 from dotenv import load_dotenv
 from typing import List, Annotated
 from typing_extensions import TypedDict
@@ -82,6 +82,8 @@ class SoftwareDeveloper:
         self.config = {
             "configurable": {"thread_id": "1"},
             "callbacks": [StreamlitCallbackHandler(st.container())]}
+        with open("technologies.json") as file:
+            self.technologies_json = json.load(file)
         self.llm_framework = {
             "Groq": ChatGroq,
             "Ollama": ChatOllama,
@@ -193,16 +195,7 @@ class SoftwareDeveloper:
         streamlit_actions = state["streamlit_actions"]
         error = state["error"]
         technology = state["technology"]
-        check_install_commands = {
-            "Python": "python3 --version",
-            "Java": "java -version",
-            "Go": "go version",
-            "C++": "g++ --version",
-            "C#": "dotnet --list-sdks",
-            ".NET": "dotnet --version",
-            "MySQL": "mysql --version",
-            "PostgreSQL": "psql --version"
-        }
+        check_install_commands = self.technologies_json
         try:
             check_install = subprocess.run(
                 check_install_commands[technology].split(),
@@ -402,13 +395,16 @@ class SoftwareDeveloper:
             self.config, 
             stream_mode = "values"
         )
-        for event in events:
-            st.chat_message(
-                event["messages"][-1][0]#.type
-            ).expander(
-                event["streamlit_actions"][-1][2][0], 
-                expanded = event["streamlit_actions"][-1][2][1]).__getattribute__(
-                    event["streamlit_actions"][-1][0])(
-                        #event["messages"][-1][1],#.content
-                        **event["streamlit_actions"][-1][1]
-                    )
+        for i, event in enumerate(events):
+            if i == 0:
+                pass
+            else:
+                st.chat_message(
+                    event["messages"][-1][0]#.type
+                ).expander(
+                    event["streamlit_actions"][-1][2][0], 
+                    expanded = event["streamlit_actions"][-1][2][1]).__getattribute__(
+                        event["streamlit_actions"][-1][0])(
+                            #event["messages"][-1][1],#.content
+                            **event["streamlit_actions"][-1][1]
+                        )
