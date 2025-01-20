@@ -86,6 +86,8 @@ try:
 except:
     pass
 
+#st.button(**{"label": "Show code", "on_click": lambda: st.chat_message("assistant").code("hello world")})
+
 if prompt := st.chat_input():
     if st.session_state["memory_filter"] == False:
         st.session_state["shared_memory"] = MemorySaver()

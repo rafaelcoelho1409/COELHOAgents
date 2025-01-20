@@ -17,6 +17,11 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
 
 load_dotenv()
+###FUNCTIONS
+@st.dialog("Show Code")
+def show_code(code):
+    st.code(code)
+#---------------------------------------------
 
 
 ###STRUCTURES
@@ -215,7 +220,11 @@ class SoftwareDeveloper:
                     """
                 )
             ]
-            streamlit_actions += ["error"]
+            streamlit_actions += [(
+                "error", 
+                {"body": messages[-1][1]},
+                ("Error", True)
+                )]
             error = "yes"
         return {"messages": messages, "error": error}
 
@@ -244,7 +253,11 @@ class SoftwareDeveloper:
                     imports, and code block:""",
                 )
             ]
-            streamlit_actions += ["write"]
+            streamlit_actions += [(
+                "markdown", 
+                {"body": messages[-1][1]},
+                ("", True)
+                )]
         code_solution = self.code_gen_chain.invoke({
             "technology": self.technology,
             "messages": messages
@@ -260,18 +273,40 @@ class SoftwareDeveloper:
                 "assistant",
                 f"""
                 **Description:**\n{code_solution.prefix}\n
-                **Requirements:**\n```{code_solution.requirements}\n```\n
-                """ + "---\n".join(
-                [
-                f"""
-                **File Names:**\n{filename}\n
-                **Codes:**\n```{self.technology.lower()}\n{code}\n```\n
                 """
-                for filename, code in zip(code_solution.filenames, code_solution.codes)],
-                )
             )
         ]
-        streamlit_actions += ["write"]
+        streamlit_actions += [(
+            "markdown", 
+            {"body": messages[-1][1]},
+            ("Code description", True)
+            )]
+        messages += [
+            (
+                "assistant",
+                f"""
+                **Requirements:**\n```{code_solution.requirements}\n```\n
+                """
+            )
+        ]
+        streamlit_actions += [(
+            "markdown", 
+            {"body": messages[-1][1]},
+            ("Requirements", False)
+            )]
+        for filename, code in zip(code_solution.filenames, code_solution.codes):
+            messages += [
+                (
+                    "assistant",
+                    f"""
+                    **Codes:**\n```{self.technology.lower()}\n{code}\n```\n
+                    """
+                )
+            ]
+            streamlit_actions += [(
+                "markdown", 
+                {"body": messages[-1][1]},
+                (filename, False))]
         # Increment
         iterations = iterations + 1
         return {"generation": code_solution, "messages": messages, "iterations": iterations}
@@ -304,7 +339,11 @@ class SoftwareDeveloper:
                 """
             )
         ]
-        streamlit_actions += ["write"]
+        streamlit_actions += [(
+            "markdown", 
+            {"body": messages[-1][1]},
+            ("Run code", False)
+            )]
         command_status = subprocess.run(
             code_runner_content,
             shell = True,
@@ -321,7 +360,11 @@ class SoftwareDeveloper:
                     """
                 )
             ]
-            streamlit_actions += ["success"]
+            streamlit_actions += [(
+                "success", 
+                {"body": messages[-1][1]},
+                ("Success", True)
+                )]
         else:
             messages += [
                 (
@@ -334,7 +377,11 @@ class SoftwareDeveloper:
             ]
             print(code_runner_content)
             print(command_status.stderr)
-            streamlit_actions += ["error"]
+            streamlit_actions += [(
+                "error", 
+                {"body": messages[-1][1]},
+                ("Error", True)
+                )]
         return {"messages": messages}
 
     def stream_graph_updates(self, technology, project_name, user_input):
@@ -342,7 +389,11 @@ class SoftwareDeveloper:
         events = self.graph.stream(
             {
                 "messages": [("user", user_input)], 
-                "streamlit_actions": ["write"],
+                "streamlit_actions": [(
+                    "markdown", 
+                    {"body": user_input},
+                    ("User request", True)
+                    )],
                 "iterations": 0, 
                 "error": "",
                 "error_message": "",
@@ -354,6 +405,10 @@ class SoftwareDeveloper:
         for event in events:
             st.chat_message(
                 event["messages"][-1][0]#.type
-            ).__getattribute__(event["streamlit_actions"][-1])(
-                event["messages"][-1][1]#.content
-            )
+            ).expander(
+                event["streamlit_actions"][-1][2][0], 
+                expanded = event["streamlit_actions"][-1][2][1]).__getattribute__(
+                    event["streamlit_actions"][-1][0])(
+                        #event["messages"][-1][1],#.content
+                        **event["streamlit_actions"][-1][1]
+                    )
