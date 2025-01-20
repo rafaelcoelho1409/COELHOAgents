@@ -52,7 +52,8 @@ if settings_button:
 clear_memory_button = grid_buttons[1].button(
     label = "Clear memory",
     use_container_width = True
-)    
+)
+st.session_state["view_graph_button_container"] = st.sidebar.container()
 
 pg.run()
 
@@ -63,9 +64,10 @@ if model_temperature_checker == False:
 
 
 with st.sidebar.expander("**Informations**", expanded = True):
+    st.markdown(f"**Framework:** {st.session_state['framework']}")
     st.markdown(f"**Model:** {st.session_state["model_name"]}")
     st.markdown(f"**Temperature:** {st.session_state["temperature_filter"]}")
-    reload_active_models()
+    #reload_active_models()
 
 
 initialize_shared_memory()

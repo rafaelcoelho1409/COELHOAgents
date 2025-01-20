@@ -70,7 +70,7 @@ role.load_model(
     st.session_state["project_folder"],
     )
 
-view_graph = st.sidebar.button(
+view_graph = st.session_state["view_graph_button_container"].button(
     label = "View application graph",
     use_container_width = True
 )
