@@ -15,6 +15,7 @@ initialize_shared_memory()
 
 with open("technologies.json") as file:
     technologies_json = json.load(file)
+technologies_json = dict(sorted(technologies_json.items()))
 
 model_temperature_checker = check_model_and_temperature()
 if model_temperature_checker == False:

@@ -25,6 +25,19 @@ def show_code(code):
 
 
 ###STRUCTURES
+class CodeRequirements(BaseModel):
+    requirements: List = Field(description = """
+        Required imports for the code solution.
+        It's mandatory to be in requirements file format 
+        to be ingested by the language runner.""")
+    filenames: List = Field(description = """
+        File names for dependencies to be installed. 
+        Can be one or more files.
+        Names must be into a list of strings.""")
+    dependencies_commands: str = Field(description = """
+        Commands to install the dependencies. Must be in only one row.""")
+        
+
 #Data model
 class Code(BaseModel):
     """
@@ -36,9 +49,6 @@ class Code(BaseModel):
         File names for this code solution. 
         Can be one or more files.
         Names must be into a list of strings.""")
-    requirements: List = Field(description = """
-        Required imports for the code solution.
-        It's mandatory to be in requirements file format to be ingested by the language runner.""")
     codes: List = Field(description = """
         Code block statements for each file to be created in the project. 
         Can be one or more code files, according to the file names.
@@ -84,6 +94,7 @@ class SoftwareDeveloper:
             "callbacks": [StreamlitCallbackHandler(st.container())]}
         with open("technologies.json") as file:
             self.technologies_json = json.load(file)
+        self.technologies_json = dict(sorted(self.technologies_json.items()))
         self.llm_framework = {
             "Groq": ChatGroq,
             "Ollama": ChatOllama,
@@ -110,6 +121,7 @@ class SoftwareDeveloper:
         self.technology = technology
         self.code_gen_chain = self.build_code_generator()
         self.code_runner_chain = self.build_code_runner()
+        self.dep_checker_chain = self.build_dependencies_checker()
         # Max tries
         self.max_iterations = 3
         # Reflect
@@ -118,16 +130,19 @@ class SoftwareDeveloper:
         self.workflow = StateGraph(State)
         ###NODES
         self.workflow.add_node("check_install", self.check_install)
-        self.workflow.add_node("generate_code", self.generate_code)
-        self.workflow.add_node("run_code", self.run_code)
+        self.workflow.add_node("check_dependencies", self.check_dependencies)
+        #self.workflow.add_node("generate_code", self.generate_code)
+        #self.workflow.add_node("run_code", self.run_code)
         ###EDGES
         self.workflow.add_edge(START, "check_install")
+        self.workflow.add_edge("check_install", "check_dependencies")
         #self.workflow.add_edge(START, "generate_code")
-        self.workflow.add_conditional_edges("check_install", self.check_install_error)
-        self.workflow.add_edge("generate_code", "run_code")
-        self.workflow.add_edge("run_code", END)
+        #self.workflow.add_conditional_edges("check_install", self.check_install_error)
+        #self.workflow.add_edge("generate_code", "run_code")
+        #self.workflow.add_edge("run_code", END)
         #self.workflow.add_edge("generate_code", END)
         #self.workflow.add_edge("check_install", END)
+        self.workflow.add_edge("check_dependencies", END)
         self.graph = self.workflow.compile(checkpointer = self.shared_memory)
 
     def build_code_generator(self):
@@ -158,6 +173,34 @@ class SoftwareDeveloper:
             #include_raw = True
             )
         return code_gen_chain
+    
+    def build_dependencies_checker(self):
+        dep_checker_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    """
+                    You are a coding assistant with expertise in the following language:  
+                    \n ------- \n  {technology} \n ------- \n 
+                    Based on this technology, you must analyze and return all 
+                    necessary dependencies to run the main file. \n
+                    Return only the dependencies to be installed in the terminal,
+                    because these dependencies will be inserted into a file. \n
+                    After this, generate all the necessary terminal commands
+                    to install the dependencies, ensuring that after this, the generated code
+                    will be run successfully. \n
+                    Generate the commands in only one row. \n
+                    """,
+                ),
+                ("placeholder", "{messages}"),
+            ]
+        )
+        dep_checker_chain = dep_checker_prompt | self.llm.with_structured_output(
+            CodeRequirements,
+            #method = "json_mode",
+            #include_raw = True
+        )
+        return dep_checker_chain
     
     def build_code_runner(self):
         code_runner_prompt = ChatPromptTemplate.from_messages(
@@ -219,7 +262,10 @@ class SoftwareDeveloper:
                 ("Error", True)
                 )]
             error = "yes"
-        return {"messages": messages, "error": error}
+        return {
+            "messages": messages, 
+            "streamlit_actions": streamlit_actions,
+            "error": error}
 
     def check_install_error(self, state: State):
         error = state["error"]
@@ -227,6 +273,63 @@ class SoftwareDeveloper:
             return END
         else:
             return "generate_code"
+        
+    def check_dependencies(self, state: State):
+        messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
+        error = state["error"]
+        technology = state["technology"]
+        dependencies = self.dep_checker_chain.invoke({
+            "technology": self.technology,
+            "messages": messages,
+        })
+        # We have been routed back to dependencies check with an error
+        if error == "yes":
+            messages += [
+                (
+                    "user",
+                    """
+                    Now, try again. 
+                    Invoke the code tool to structure the output with requirements
+                    and dependencies install commands:""",
+                )
+            ]
+            streamlit_actions += [(
+                "markdown", 
+                {"body": messages[-1][1]},
+                ("", True)
+                )]
+        for filename, requirement in zip(dependencies.filenames, dependencies.dependencies_commands):
+            messages += [
+                (
+                    "assistant",
+                    f"""
+                    **Requirements:**\n```{requirement}\n```\n
+                    """
+                )
+            ]
+            streamlit_actions += [(
+                "markdown", 
+                {"body": messages[-1][1]},
+                (filename, False)
+                )]
+        messages += [
+            (
+                "assistant",
+                f"""
+                **Dependencies install commands:**\n```{dependencies.dependencies_commands}\n```\n
+                """
+            )
+        ]
+        streamlit_actions += [(
+            "markdown", 
+            {"body": messages[-1][1]},
+            ("Dependencies install commands", True)
+        )]
+        return {
+            "messages": messages, 
+            "streamlit_actions": streamlit_actions,
+            "error": error}
 
 
     def generate_code(self, state: State):
@@ -273,19 +376,6 @@ class SoftwareDeveloper:
             "markdown", 
             {"body": messages[-1][1]},
             ("Code description", True)
-            )]
-        messages += [
-            (
-                "assistant",
-                f"""
-                **Requirements:**\n```{code_solution.requirements}\n```\n
-                """
-            )
-        ]
-        streamlit_actions += [(
-            "markdown", 
-            {"body": messages[-1][1]},
-            ("Requirements", False)
             )]
         for filename, code in zip(code_solution.filenames, code_solution.codes):
             messages += [
@@ -375,7 +465,10 @@ class SoftwareDeveloper:
                 {"body": messages[-1][1]},
                 ("Error", True)
                 )]
-        return {"messages": messages}
+        return {
+            "messages": messages,
+            "streamlit_actions": streamlit_actions,
+            }
 
     def stream_graph_updates(self, technology, project_name, user_input):
         # The config is the **second positional argument** to stream() or invoke()!
