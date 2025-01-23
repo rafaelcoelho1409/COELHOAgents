@@ -26,16 +26,10 @@ def show_code(code):
 
 ###STRUCTURES
 class CodeRequirements(BaseModel):
-    requirements: List = Field(description = """
-        Required imports for the code solution.
-        It's mandatory to be in requirements file format 
-        to be ingested by the language runner.""")
-    filenames: List = Field(description = """
-        File names for dependencies to be installed. 
-        Can be one or more files.
-        Names must be into a list of strings.""")
     dependencies_commands: str = Field(description = """
-        Commands to install the dependencies. Must be in only one row.""")
+        Represents the code block to be executed.
+        Commands to install the dependencies. 
+        Must be in only one row.""")
         
 
 #Data model
@@ -43,6 +37,8 @@ class Code(BaseModel):
     """
     Schema for code solutions to questions about the programming language.
     """
+    project_name: str = Field(description = """
+        Name of the project""")
     prefix: str = Field(description = """
         Description of the problem and approach""")
     filenames: List = Field(description = """
@@ -54,6 +50,7 @@ class Code(BaseModel):
         Can be one or more code files, according to the file names.
         Codes must be into a list of strings.""" 
         )
+
 
 class CodeBlock(BaseModel):
     """
@@ -81,6 +78,7 @@ class State(TypedDict):
     messages: List
     streamlit_actions: List
     generation: str
+    dependencies_command: str
     iterations: int
     technology: str
     project_name: str
@@ -130,21 +128,22 @@ class SoftwareDeveloper:
         self.workflow = StateGraph(State)
         ###NODES
         self.workflow.add_node("check_install", self.check_install)
+        self.workflow.add_node("generate_code", self.generate_code)
         self.workflow.add_node("check_dependencies", self.check_dependencies)
-        #self.workflow.add_node("generate_code", self.generate_code)
         #self.workflow.add_node("run_code", self.run_code)
         ###EDGES
         self.workflow.add_edge(START, "check_install")
-        self.workflow.add_edge("check_install", "check_dependencies")
+        #self.workflow.add_edge("check_install", "check_dependencies")
         #self.workflow.add_edge(START, "generate_code")
-        #self.workflow.add_conditional_edges("check_install", self.check_install_error)
+        self.workflow.add_conditional_edges("check_install", self.check_install_error)
         #self.workflow.add_edge("generate_code", "run_code")
         #self.workflow.add_edge("run_code", END)
         #self.workflow.add_edge("generate_code", END)
+        self.workflow.add_edge("generate_code", "check_dependencies")
         #self.workflow.add_edge("check_install", END)
         self.workflow.add_edge("check_dependencies", END)
         self.graph = self.workflow.compile(checkpointer = self.shared_memory)
-
+    
     def build_code_generator(self):
         # Grader prompt
         code_gen_prompt = ChatPromptTemplate.from_messages(
@@ -154,10 +153,13 @@ class SoftwareDeveloper:
                     """
                     You are a coding assistant with expertise in the following language:  
                     \n ------- \n  {technology} \n ------- \n 
-                    Answer the user question based on the programming language. \n
+                    ### Instructions about code solution generation ### \n
+                    Answer the user question 
+                    based on the programming language. \n
                     Ensure any code you provide can be executed 
                     with all required imports and variables defined. \n 
                     Structure your answer with a description of the code solution. \n
+                    The project name must be in a folder name format. \n
                     Then list the imports in a requirements format file. \n 
                     And finally list the functioning code block. \n
                     Format the code to be shown very organized in a markdown. \n
@@ -180,17 +182,28 @@ class SoftwareDeveloper:
                 (
                     "system",
                     """
-                    You are a coding assistant with expertise in the following language:  
-                    \n ------- \n  {technology} \n ------- \n 
-                    Based on this technology, you must analyze and return all 
-                    necessary dependencies to run the main file. \n
-                    Return only the dependencies to be installed in the terminal,
-                    because these dependencies will be inserted into a file. \n
-                    After this, generate all the necessary terminal commands
-                    to install the dependencies, ensuring that after this, the generated code
-                    will be run successfully. \n
-                    Generate the commands in only one row. \n
-                    """,
+                    ### Instructions about dependencies install ###\n
+                    You are a coding assistant with expertise in the following language:\n
+                    **{technology}**\n
+                    \n
+                    Based on the generated code below:\n\n
+                    {code}\n\n 
+                    Your task is to:\n
+                    1. Analyze and return all necessary dependencies to run the main file.\n
+                    2. Provide these dependencies in the format of a `requirements` file, which lists each dependency on a new line.\n
+                    3. List the file names for these dependencies in a list of strings.\n
+                    4. Generate the terminal commands to install the dependencies. The commands should:\n
+                       - Be in a single row.\n
+                       - Use the standard format for the specified technology.\n
+                    \n
+                    """
+                    #### Output Format ###\n
+                    #- **Requirements:**\n
+                    #  ```plaintext\n
+                    #  dependency_1\n
+                    #  dependency_2\n
+                    #  ...\n
+                    #  ```\n
                 ),
                 ("placeholder", "{messages}"),
             ]
@@ -201,7 +214,7 @@ class SoftwareDeveloper:
             #include_raw = True
         )
         return dep_checker_chain
-    
+
     def build_code_runner(self):
         code_runner_prompt = ChatPromptTemplate.from_messages(
             [
@@ -209,17 +222,15 @@ class SoftwareDeveloper:
                     "system",
                     """
                     You are a coding assistant with expertise in the following language:  
-                    \n ------- \n  {technology} \n ------- \n
-                    These are all files created: \n
-                    {filenames} \n\n
-                    Based on this technology, return all necessary commands to run the main file. \n
-                    Return only the commands to be executed in the terminal,
-                    only the commands inside a code block and nothing more. \n
-                    Make sure the commands can be run in only one row. \n
-                    In the commands below, you need to put "[...]/" before EVERY file names (a special attention here, please),\n
-                    because this "[...]" will be replace by the real folder name using Python .replace method.
-                    The commands need to be in the following standard format: \n
-                    ```{technology}\nCOMMANDS HERE```\n\n
+                    \n ------- \n  {technology} \n ------- \n 
+                    Answer the user question based on the programming language. \n
+                    Ensure any code you provide can be executed 
+                    with all required imports and variables defined. \n 
+                    Structure your answer with a description of the code solution. \n
+                    Then list the imports in a requirements format file. \n 
+                    And finally list the functioning code block. \n
+                    Format the code to be shown very organized in a markdown. \n
+                    Here is the user question:
                     """,
                 ),
                 ("placeholder", "{messages}"),
@@ -259,7 +270,8 @@ class SoftwareDeveloper:
             streamlit_actions += [(
                 "error", 
                 {"body": messages[-1][1]},
-                ("Error", True)
+                ("Error", True),
+                messages[-1][0],
                 )]
             error = "yes"
         return {
@@ -273,64 +285,6 @@ class SoftwareDeveloper:
             return END
         else:
             return "generate_code"
-        
-    def check_dependencies(self, state: State):
-        messages = state["messages"]
-        streamlit_actions = state["streamlit_actions"]
-        error = state["error"]
-        technology = state["technology"]
-        dependencies = self.dep_checker_chain.invoke({
-            "technology": self.technology,
-            "messages": messages,
-        })
-        # We have been routed back to dependencies check with an error
-        if error == "yes":
-            messages += [
-                (
-                    "user",
-                    """
-                    Now, try again. 
-                    Invoke the code tool to structure the output with requirements
-                    and dependencies install commands:""",
-                )
-            ]
-            streamlit_actions += [(
-                "markdown", 
-                {"body": messages[-1][1]},
-                ("", True)
-                )]
-        for filename, requirement in zip(dependencies.filenames, dependencies.dependencies_commands):
-            messages += [
-                (
-                    "assistant",
-                    f"""
-                    **Requirements:**\n```{requirement}\n```\n
-                    """
-                )
-            ]
-            streamlit_actions += [(
-                "markdown", 
-                {"body": messages[-1][1]},
-                (filename, False)
-                )]
-        messages += [
-            (
-                "assistant",
-                f"""
-                **Dependencies install commands:**\n```{dependencies.dependencies_commands}\n```\n
-                """
-            )
-        ]
-        streamlit_actions += [(
-            "markdown", 
-            {"body": messages[-1][1]},
-            ("Dependencies install commands", True)
-        )]
-        return {
-            "messages": messages, 
-            "streamlit_actions": streamlit_actions,
-            "error": error}
-
 
     def generate_code(self, state: State):
         #st.chat_message("Tool").info("GENERATING CODE SOLUTION")
@@ -352,7 +306,8 @@ class SoftwareDeveloper:
             streamlit_actions += [(
                 "markdown", 
                 {"body": messages[-1][1]},
-                ("", True)
+                ("", True),
+                messages[-1][0],
                 )]
         code_solution = self.code_gen_chain.invoke({
             "technology": self.technology,
@@ -368,6 +323,20 @@ class SoftwareDeveloper:
             (
                 "assistant",
                 f"""
+                **Project Name:**\n{code_solution.project_name}\n
+                """
+            )
+        ]
+        streamlit_actions += [(
+            "markdown", 
+            {"body": messages[-1][1]},
+            ("Project Name", True),
+            messages[-1][0],
+            )]
+        messages += [
+            (
+                "assistant",
+                f"""
                 **Description:**\n{code_solution.prefix}\n
                 """
             )
@@ -375,7 +344,8 @@ class SoftwareDeveloper:
         streamlit_actions += [(
             "markdown", 
             {"body": messages[-1][1]},
-            ("Code description", True)
+            ("Code description", True),
+            messages[-1][0],
             )]
         for filename, code in zip(code_solution.filenames, code_solution.codes):
             messages += [
@@ -389,10 +359,63 @@ class SoftwareDeveloper:
             streamlit_actions += [(
                 "markdown", 
                 {"body": messages[-1][1]},
-                (filename, False))]
+                (filename, False),
+                messages[-1][0],
+                )]
         # Increment
         iterations = iterations + 1
-        return {"generation": code_solution, "messages": messages, "iterations": iterations}
+        return {
+            "generation": code_solution, 
+            "messages": messages, 
+            "streamlit_actions": streamlit_actions,
+            "iterations": iterations}
+    
+    def check_dependencies(self, state: State):
+        messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
+        error = state["error"]
+        code_solution = state["generation"]
+        dependencies = self.dep_checker_chain.invoke({
+            "technology": self.technology,
+            "code": code_solution.codes,
+            "messages": messages,
+        })
+        # We have been routed back to dependencies check with an error
+        if error == "yes":
+            messages += [
+                (
+                    "user",
+                    """
+                    Now, try again. 
+                    Invoke the code tool to structure the output with requirements
+                    and dependencies install commands:""",
+                )
+            ]
+            streamlit_actions += [(
+                "markdown", 
+                {"body": messages[-1][1]},
+                ("", True),
+                messages[-1][0],
+                )]
+        messages += [
+            (
+                "assistant",
+                f"""
+                **Dependencies install commands:**\n
+                ```{dependencies.dependencies_commands}\n```\n
+                """
+            )
+        ]
+        streamlit_actions += [(
+            "markdown", 
+            {"body": messages[-1][1]},
+            ("Dependencies install commands", True),
+            messages[-1][0],
+        )]
+        return {
+            "messages": messages, 
+            "streamlit_actions": streamlit_actions,
+            "error": error}
     
     def run_code(self, state: State):
         messages = state["messages"]
@@ -404,10 +427,7 @@ class SoftwareDeveloper:
             "messages": messages,
             "filenames": code_solution.filenames
         })
-        #st.write(code_runner)
-        #st.stop()
         code_runner_content = code_runner.code#["code"]
-        #for filename in code_solution.filenames:
         code_runner_content = code_runner_content.replace(
             "[...]", 
             str(self.project_folder)
@@ -425,7 +445,8 @@ class SoftwareDeveloper:
         streamlit_actions += [(
             "markdown", 
             {"body": messages[-1][1]},
-            ("Run code", False)
+            ("Run code", False),
+            messages[-1][0],
             )]
         command_status = subprocess.run(
             code_runner_content,
@@ -446,7 +467,8 @@ class SoftwareDeveloper:
             streamlit_actions += [(
                 "success", 
                 {"body": messages[-1][1]},
-                ("Success", True)
+                ("Success", True),
+                messages[-1][0],
                 )]
         else:
             messages += [
@@ -463,7 +485,8 @@ class SoftwareDeveloper:
             streamlit_actions += [(
                 "error", 
                 {"body": messages[-1][1]},
-                ("Error", True)
+                ("Error", True),
+                messages[-1][0],
                 )]
         return {
             "messages": messages,
@@ -478,7 +501,8 @@ class SoftwareDeveloper:
                 "streamlit_actions": [(
                     "markdown", 
                     {"body": user_input},
-                    ("User request", True)
+                    ("User request", True),
+                    "user"
                     )],
                 "iterations": 0, 
                 "error": "",
@@ -488,16 +512,15 @@ class SoftwareDeveloper:
             self.config, 
             stream_mode = "values"
         )
-        for i, event in enumerate(events):
-            if i == 0:
-                pass
-            else:
-                st.chat_message(
-                    event["messages"][-1][0]#.type
-                ).expander(
-                    event["streamlit_actions"][-1][2][0], 
-                    expanded = event["streamlit_actions"][-1][2][1]).__getattribute__(
-                        event["streamlit_actions"][-1][0])(
-                            #event["messages"][-1][1],#.content
-                            **event["streamlit_actions"][-1][1]
-                        )
+        last_event = list(events)[-1]
+        for action in last_event["streamlit_actions"]:
+            st.chat_message(
+                action[3]  # .type
+            ).expander(
+                action[2][0], 
+                expanded = True#action[2][1]
+            ).__getattribute__(
+                action[0]
+            )(
+                **action[1]
+            )
