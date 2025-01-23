@@ -2,6 +2,7 @@ import streamlit as st
 import subprocess
 import os
 import json
+import stqdm
 from dotenv import load_dotenv
 from typing import List, Annotated
 from typing_extensions import TypedDict
@@ -17,10 +18,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
 
 load_dotenv()
-###FUNCTIONS
-@st.dialog("Show Code")
-def show_code(code):
-    st.code(code)
+
 #---------------------------------------------
 
 
@@ -60,6 +58,7 @@ class CodeBlock(BaseModel):
         code : Code block
     """
     code: str
+
 
 class State(TypedDict):
     """
@@ -130,18 +129,19 @@ class SoftwareDeveloper:
         self.workflow.add_node("check_install", self.check_install)
         self.workflow.add_node("generate_code", self.generate_code)
         self.workflow.add_node("check_dependencies", self.check_dependencies)
-        #self.workflow.add_node("run_code", self.run_code)
+        self.workflow.add_node("run_code", self.run_code)
         ###EDGES
         self.workflow.add_edge(START, "check_install")
         #self.workflow.add_edge("check_install", "check_dependencies")
         #self.workflow.add_edge(START, "generate_code")
         self.workflow.add_conditional_edges("check_install", self.check_install_error)
         #self.workflow.add_edge("generate_code", "run_code")
-        #self.workflow.add_edge("run_code", END)
         #self.workflow.add_edge("generate_code", END)
         self.workflow.add_edge("generate_code", "check_dependencies")
+        self.workflow.add_edge("check_dependencies", "run_code")
+        self.workflow.add_edge("run_code", END)
         #self.workflow.add_edge("check_install", END)
-        self.workflow.add_edge("check_dependencies", END)
+        #self.workflow.add_edge("check_dependencies", END)
         self.graph = self.workflow.compile(checkpointer = self.shared_memory)
     
     def build_code_generator(self):
@@ -159,7 +159,7 @@ class SoftwareDeveloper:
                     Ensure any code you provide can be executed 
                     with all required imports and variables defined. \n 
                     Structure your answer with a description of the code solution. \n
-                    The project name must be in a folder name format. \n
+                    The project name must be in a folder name format, Pascal case specifically. \n
                     Then list the imports in a requirements format file. \n 
                     And finally list the functioning code block. \n
                     Format the code to be shown very organized in a markdown. \n
@@ -196,14 +196,19 @@ class SoftwareDeveloper:
                        - Be in a single row.\n
                        - Use the standard format for the specified technology.\n
                     \n
+                    5. Always put "[...]" before all file names, because this "[...]" block 
+                    will be replaced by the project folder path when the code is executed.\n
+                    6. If technology is Python, >>>it's mandatory to use uv commands 
+                    along with pip (virtual enviroment creation and requirements install)<<< 
+                    instead of pure pip to avoid errors like 
+                    "This environment is externally managed".\n
+                    Example: ```plaintext\n
+                    uv venv $FOLDER_NAME/.venv && 
+                    source $FOLDER_NAME/.venv/bin/activate &&
+                    uv pip install numpy pandas\n
+                    ```\n
+                    ```\n
                     """
-                    #### Output Format ###\n
-                    #- **Requirements:**\n
-                    #  ```plaintext\n
-                    #  dependency_1\n
-                    #  dependency_2\n
-                    #  ...\n
-                    #  ```\n
                 ),
                 ("placeholder", "{messages}"),
             ]
@@ -226,10 +231,24 @@ class SoftwareDeveloper:
                     Answer the user question based on the programming language. \n
                     Ensure any code you provide can be executed 
                     with all required imports and variables defined. \n 
-                    Structure your answer with a description of the code solution. \n
-                    Then list the imports in a requirements format file. \n 
-                    And finally list the functioning code block. \n
-                    Format the code to be shown very organized in a markdown. \n
+                    Based on the generated code below:\n\n
+                    {code}\n\n 
+                    Your task is to:\n
+                    1. Generate the terminal commands to install the dependencies. The commands should:\n
+                       - Be in a single row.\n
+                       - Use the standard format for the specified technology.\n
+                    \n
+                    2. Always put "[...]" before all file names, because this "[...]" block 
+                    will be replaced by the project folder path when the code is executed.\n
+                    3. If technology is Python, >>>it's mandatory to use uv commands 
+                    along with pip (virtual enviroment creation and requirements install)<<< 
+                    instead of pure pip to avoid errors like 
+                    "This environment is externally managed".\n
+                    Example: ```plaintext\n
+                    uv venv $FOLDER_NAME/.venv && 
+                    source $FOLDER_NAME/.venv/bin/activate &&
+                    uv pip install numpy pandas\n
+                    ```\n
                     Here is the user question:
                     """,
                 ),
@@ -315,8 +334,16 @@ class SoftwareDeveloper:
         })
         #SAVING FILES
         #ALERT: INSERT ALL THESE FILES INTO A NEW FOLDER TO MAKE THINGS ORGANIZED
+        os.makedirs(
+            os.path.join(
+                str(self.project_folder), 
+                code_solution.project_name), 
+                exist_ok = True
+                )
         for filename, code in zip(code_solution.filenames, code_solution.codes):
-            with open(self.project_folder / filename, "w") as file:
+            with open(self.project_folder / os.path.join(
+                code_solution.project_name, 
+                filename), "w") as file:
                 file.write(code)
         #------------
         messages += [
@@ -380,6 +407,13 @@ class SoftwareDeveloper:
             "code": code_solution.codes,
             "messages": messages,
         })
+        dependencies_commands = dependencies.dependencies_commands.replace(
+            "[...]", 
+            os.path.join(
+                str(self.project_folder), 
+                code_solution.project_name
+                )
+            )
         # We have been routed back to dependencies check with an error
         if error == "yes":
             messages += [
@@ -402,7 +436,7 @@ class SoftwareDeveloper:
                 "assistant",
                 f"""
                 **Dependencies install commands:**\n
-                ```{dependencies.dependencies_commands}\n```\n
+                ```{dependencies_commands}\n```\n
                 """
             )
         ]
@@ -425,7 +459,8 @@ class SoftwareDeveloper:
         code_runner = self.code_runner_chain.invoke({
             "technology": self.technology,
             "messages": messages,
-            "filenames": code_solution.filenames
+            #"filenames": code_solution.filenames,
+            "code": code_solution.codes,
         })
         code_runner_content = code_runner.code#["code"]
         code_runner_content = code_runner_content.replace(

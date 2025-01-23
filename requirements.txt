@@ -19,3 +19,4 @@ sseclient-py
 duckduckgo-search
 pandas
 bs4
+stqdm
