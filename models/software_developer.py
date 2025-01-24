@@ -268,6 +268,7 @@ class SoftwareDeveloper:
         streamlit_actions = state["streamlit_actions"]
         error = state["error"]
         technology = state["technology"]
+        streamlit_action = []
         check_install_commands = self.technologies_json
         try:
             check_install = subprocess.run(
@@ -286,13 +287,14 @@ class SoftwareDeveloper:
                     """
                 )
             ]
-            streamlit_actions += [(
+            streamlit_action += [(
                 "error", 
                 {"body": messages[-1][1]},
                 ("Error", True),
                 messages[-1][0],
                 )]
             error = "yes"
+        streamlit_actions += [streamlit_action]
         return {
             "messages": messages, 
             "streamlit_actions": streamlit_actions,
@@ -311,6 +313,7 @@ class SoftwareDeveloper:
         streamlit_actions = state["streamlit_actions"]
         iterations = state["iterations"]
         error = state["error"]
+        streamlit_action = []
         # We have been routed back to generation with an error
         if error == "yes":
             messages += [
@@ -322,7 +325,7 @@ class SoftwareDeveloper:
                     imports, and code block:""",
                 )
             ]
-            streamlit_actions += [(
+            streamlit_action += [(
                 "markdown", 
                 {"body": messages[-1][1]},
                 ("", True),
@@ -354,7 +357,7 @@ class SoftwareDeveloper:
                 """
             )
         ]
-        streamlit_actions += [(
+        streamlit_action += [(
             "markdown", 
             {"body": messages[-1][1]},
             ("Project Name", True),
@@ -368,7 +371,7 @@ class SoftwareDeveloper:
                 """
             )
         ]
-        streamlit_actions += [(
+        streamlit_action += [(
             "markdown", 
             {"body": messages[-1][1]},
             ("Code description", True),
@@ -383,7 +386,7 @@ class SoftwareDeveloper:
                     """
                 )
             ]
-            streamlit_actions += [(
+            streamlit_action += [(
                 "markdown", 
                 {"body": messages[-1][1]},
                 (filename, False),
@@ -391,6 +394,7 @@ class SoftwareDeveloper:
                 )]
         # Increment
         iterations = iterations + 1
+        streamlit_actions += [streamlit_action]
         return {
             "generation": code_solution, 
             "messages": messages, 
@@ -402,6 +406,7 @@ class SoftwareDeveloper:
         streamlit_actions = state["streamlit_actions"]
         error = state["error"]
         code_solution = state["generation"]
+        streamlit_action = []
         dependencies = self.dep_checker_chain.invoke({
             "technology": self.technology,
             "code": code_solution.codes,
@@ -425,7 +430,7 @@ class SoftwareDeveloper:
                     and dependencies install commands:""",
                 )
             ]
-            streamlit_actions += [(
+            streamlit_action += [(
                 "markdown", 
                 {"body": messages[-1][1]},
                 ("", True),
@@ -440,12 +445,13 @@ class SoftwareDeveloper:
                 """
             )
         ]
-        streamlit_actions += [(
+        streamlit_action += [(
             "markdown", 
             {"body": messages[-1][1]},
             ("Dependencies install commands", True),
             messages[-1][0],
         )]
+        streamlit_actions += [streamlit_action]
         return {
             "messages": messages, 
             "streamlit_actions": streamlit_actions,
@@ -456,6 +462,7 @@ class SoftwareDeveloper:
         streamlit_actions = state["streamlit_actions"]
         code_solution = state["generation"]
         technology = state["technology"]
+        streamlit_action = []
         code_runner = self.code_runner_chain.invoke({
             "technology": self.technology,
             "messages": messages,
@@ -477,7 +484,7 @@ class SoftwareDeveloper:
                 """
             )
         ]
-        streamlit_actions += [(
+        streamlit_action += [(
             "markdown", 
             {"body": messages[-1][1]},
             ("Run code", False),
@@ -499,7 +506,7 @@ class SoftwareDeveloper:
                     """
                 )
             ]
-            streamlit_actions += [(
+            streamlit_action += [(
                 "success", 
                 {"body": messages[-1][1]},
                 ("Success", True),
@@ -517,12 +524,13 @@ class SoftwareDeveloper:
             ]
             print(code_runner_content)
             print(command_status.stderr)
-            streamlit_actions += [(
+            streamlit_action += [(
                 "error", 
                 {"body": messages[-1][1]},
                 ("Error", True),
                 messages[-1][0],
                 )]
+        streamlit_actions += [streamlit_action]
         return {
             "messages": messages,
             "streamlit_actions": streamlit_actions,
@@ -533,12 +541,12 @@ class SoftwareDeveloper:
         events = self.graph.stream(
             {
                 "messages": [("user", user_input)], 
-                "streamlit_actions": [(
+                "streamlit_actions": [[(
                     "markdown", 
                     {"body": user_input},
                     ("User request", True),
                     "user"
-                    )],
+                    )]],
                 "iterations": 0, 
                 "error": "",
                 "error_message": "",
@@ -547,15 +555,17 @@ class SoftwareDeveloper:
             self.config, 
             stream_mode = "values"
         )
-        last_event = list(events)[-1]
-        for action in last_event["streamlit_actions"]:
-            st.chat_message(
-                action[3]  # .type
-            ).expander(
-                action[2][0], 
-                expanded = True#action[2][1]
-            ).__getattribute__(
-                action[0]
-            )(
-                **action[1]
-            )
+        for event in events:
+            actions = event["streamlit_actions"][-1]
+            if actions != []:
+                for action in actions:
+                    st.chat_message(
+                        action[3]  # .type
+                    ).expander(
+                        action[2][0], 
+                        expanded = True#action[2][1]
+                    ).__getattribute__(
+                        action[0]
+                    )(
+                        **action[1]
+                    )
