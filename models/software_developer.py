@@ -142,7 +142,9 @@ class SoftwareDeveloper:
         self.workflow.add_edge("run_code", END)
         #self.workflow.add_edge("check_install", END)
         #self.workflow.add_edge("check_dependencies", END)
-        self.graph = self.workflow.compile(checkpointer = self.shared_memory)
+        self.graph = self.workflow.compile(
+            checkpointer = st.session_state["shared_memory"]#self.shared_memory
+        )
     
     def build_code_generator(self):
         # Grader prompt
@@ -208,6 +210,8 @@ class SoftwareDeveloper:
                     uv pip install numpy pandas\n
                     ```\n
                     ```\n
+                    7. You must generate all necessary terminal commands in only one row
+                    to resolve all dependencies before running the final file to user.\n
                     """
                 ),
                 ("placeholder", "{messages}"),
@@ -247,9 +251,11 @@ class SoftwareDeveloper:
                     Example: ```plaintext\n
                     uv venv $FOLDER_NAME/.venv && 
                     source $FOLDER_NAME/.venv/bin/activate &&
-                    uv pip install numpy pandas\n
+                    uv pip install numpy pandas &&
+                    python3 $PYTHON_FILE_TO_BE_EXECUTED\n
                     ```\n
-                    Here is the user question:
+                    4. You must generate all necessary terminal commands in only one row
+                    to compiling and running the code to the final user.\n
                     """,
                 ),
                 ("placeholder", "{messages}"),
@@ -560,10 +566,10 @@ class SoftwareDeveloper:
             if actions != []:
                 for action in actions:
                     st.chat_message(
-                        action[3]  # .type
+                        action[3]
                     ).expander(
                         action[2][0], 
-                        expanded = True#action[2][1]
+                        expanded = action[2][1]
                     ).__getattribute__(
                         action[0]
                     )(
