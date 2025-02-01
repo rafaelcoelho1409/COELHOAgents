@@ -20,3 +20,4 @@ duckduckgo-search
 pandas
 bs4
 stqdm
+stackapi

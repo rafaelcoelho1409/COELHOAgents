@@ -11,6 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
+from langchain_community.utilities import StackExchangeAPIWrapper
 from langchain_ollama import ChatOllama
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -26,12 +27,11 @@ load_dotenv()
 class CodeRequirements(BaseModel):
     dependencies_commands: str = Field(description = """
         Represents the code block to be executed.
-        Commands to install the dependencies. 
-        Must be in only one row.""")
+        Commands to install the dependencies.""")
         
 
 #Data model
-class Code(BaseModel):
+class CodeGeneration(BaseModel):
     """
     Schema for code solutions to questions about the programming language.
     """
@@ -60,6 +60,12 @@ class CodeBlock(BaseModel):
     code: str
 
 
+class CodeError(BaseModel):
+    error_message: str = Field(description = """
+        Summarized error message in only one row, to be searched on StackOverflow API.""" 
+        )
+
+
 class State(TypedDict):
     """
     Represents the state of our graph.
@@ -73,14 +79,18 @@ class State(TypedDict):
         technology : Programming language or technology stack
     """
     error: str
-    error_message: str
     messages: List
     streamlit_actions: List
     generation: str
-    dependencies_command: str
+    #dependencies_command: str
     iterations: int
     technology: str
     project_name: str
+    command: str
+    command_error: str
+    #error_search_term: str
+    #error_search_results: str
+    #iterations_search: int
 #---------------------------------------------
 
 class SoftwareDeveloper:
@@ -119,6 +129,7 @@ class SoftwareDeveloper:
         self.code_gen_chain = self.build_code_generator()
         self.code_runner_chain = self.build_code_runner()
         self.dep_checker_chain = self.build_dependencies_checker()
+        self.code_runner_correct_chain = self.build_code_runner_correct_search()
         # Max tries
         self.max_iterations = 3
         # Reflect
@@ -130,15 +141,16 @@ class SoftwareDeveloper:
         self.workflow.add_node("generate_code", self.generate_code)
         self.workflow.add_node("check_dependencies", self.check_dependencies)
         self.workflow.add_node("run_code", self.run_code)
+        #self.workflow.add_node("correct_run_code_search_term", self.correct_run_code_search_term)
+        #self.workflow.add_node("correct_run_code_search_results", self.correct_run_code_search_results)
         ###EDGES
         self.workflow.add_edge(START, "check_install")
-        #self.workflow.add_edge("check_install", "check_dependencies")
-        #self.workflow.add_edge(START, "generate_code")
         self.workflow.add_conditional_edges("check_install", self.check_install_error)
-        #self.workflow.add_edge("generate_code", "run_code")
-        #self.workflow.add_edge("generate_code", END)
         self.workflow.add_edge("generate_code", "check_dependencies")
         self.workflow.add_edge("check_dependencies", "run_code")
+        #self.workflow.add_conditional_edges("run_code", self.search_error_online)
+        #self.workflow.add_edge("correct_run_code_search_term", "correct_run_code_search_results")
+        #self.workflow.add_edge("correct_run_code_search_results", END)
         self.workflow.add_edge("run_code", END)
         #self.workflow.add_edge("check_install", END)
         #self.workflow.add_edge("check_dependencies", END)
@@ -172,9 +184,7 @@ class SoftwareDeveloper:
             ]
         )
         code_gen_chain = code_gen_prompt | self.llm.with_structured_output(
-            Code,
-            #method = "json_mode",
-            #include_raw = True
+            CodeGeneration,
             )
         return code_gen_chain
     
@@ -210,8 +220,6 @@ class SoftwareDeveloper:
                     uv pip install numpy pandas\n
                     ```\n
                     ```\n
-                    7. You must generate all necessary terminal commands in only one row
-                    to resolve all dependencies before running the final file to user.\n
                     """
                 ),
                 ("placeholder", "{messages}"),
@@ -219,8 +227,6 @@ class SoftwareDeveloper:
         )
         dep_checker_chain = dep_checker_prompt | self.llm.with_structured_output(
             CodeRequirements,
-            #method = "json_mode",
-            #include_raw = True
         )
         return dep_checker_chain
 
@@ -254,8 +260,6 @@ class SoftwareDeveloper:
                     uv pip install numpy pandas &&
                     python3 $PYTHON_FILE_TO_BE_EXECUTED\n
                     ```\n
-                    4. You must generate all necessary terminal commands in only one row
-                    to compiling and running the code to the final user.\n
                     """,
                 ),
                 ("placeholder", "{messages}"),
@@ -263,10 +267,37 @@ class SoftwareDeveloper:
         )
         code_runner_chain = code_runner_prompt | self.llm.with_structured_output(
             CodeBlock,
-            #method = "json_mode",
-            #include_raw = True
         )
         return code_runner_chain
+    
+    def build_code_runner_correct_search(self):
+        code_runner_correct_search_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    """
+                    You are a coding assistant with expertise in the following language:  
+                    \n ------- \n  {technology} \n ------- \n 
+                    Answer the user question based on the programming language. \n
+                    Ensure any code you provide can be executed 
+                    with all required imports and variables defined. \n 
+                    Based on the code executed below:\n\n
+                    {command}\n\n 
+                    And based on the error after the code execution:\n\n
+                    {command_error}\n\n 
+                    Your task is to:\n
+                    1. Summarize the error message in only one row, 
+                    to be searched on StackOverflow in its most optimized way.\n
+                    """,
+                ),
+                ("placeholder", "{messages}"),
+            ]
+        )
+        #stack_api = StackExchangeAPIWrapper()
+        code_runner_correct_chain = code_runner_correct_search_prompt | self.llm.with_structured_output(
+            CodeBlock,
+        )
+        return code_runner_correct_chain
     
     ###Nodes
     def check_install(self, state: State):
@@ -395,7 +426,7 @@ class SoftwareDeveloper:
             streamlit_action += [(
                 "markdown", 
                 {"body": messages[-1][1]},
-                (filename, False),
+                (filename, True),
                 messages[-1][0],
                 )]
         # Increment
@@ -468,6 +499,7 @@ class SoftwareDeveloper:
         streamlit_actions = state["streamlit_actions"]
         code_solution = state["generation"]
         technology = state["technology"]
+        error = state["error"]
         streamlit_action = []
         code_runner = self.code_runner_chain.invoke({
             "technology": self.technology,
@@ -484,6 +516,7 @@ class SoftwareDeveloper:
             (
                 "assistant",
                 f"""
+                Suggested code to be executed on the generated folder (terminal):\n\n
                 ```{technology}\n
                 {code_runner_content}\n
                 ```
@@ -491,56 +524,137 @@ class SoftwareDeveloper:
             )
         ]
         streamlit_action += [(
-            "markdown", 
+            "info", 
             {"body": messages[-1][1]},
-            ("Run code", False),
+            ("Run code suggestion", True),
             messages[-1][0],
             )]
-        command_status = subprocess.run(
-            code_runner_content,
-            shell = True,
-            capture_output = True,
-            text = True
-        )
-        if command_status.returncode == 0:
-            messages += [
-                (
-                    "assistant",
-                    f"""
-                    The code was executed successfully.\n
-                    Output: {command_status.stdout}
-                    """
-                )
-            ]
-            streamlit_action += [(
-                "success", 
-                {"body": messages[-1][1]},
-                ("Success", True),
-                messages[-1][0],
-                )]
-        else:
-            messages += [
-                (
-                    "assistant",
-                    f"""
-                    The code was not executed successfully.\n
-                    Output: {command_status.stderr}
-                    """
-                )
-            ]
-            print(code_runner_content)
-            print(command_status.stderr)
-            streamlit_action += [(
-                "error", 
-                {"body": messages[-1][1]},
-                ("Error", True),
-                messages[-1][0],
-                )]
+        #command_status = subprocess.run(
+        #    code_runner_content,
+        #    shell = True,
+        #    capture_output = True,
+        #    text = True
+        #)
+        #if command_status.returncode == 0:
+        #    messages += [
+        #        (
+        #            "assistant",
+        #            f"""
+        #            The code was executed successfully.\n
+        #            Output: {command_status.stdout}
+        #            """
+        #        )
+        #    ]
+        #    streamlit_action += [(
+        #        "success", 
+        #        {"body": messages[-1][1]},
+        #        ("Success", True),
+        #        messages[-1][0],
+        #        )]
+        #    error = "no"
+        #else:
+        #    messages += [
+        #        (
+        #            "assistant",
+        #            f"""
+        #            The code was not executed successfully.\n
+        #            Output: {command_status.stderr}
+        #            """
+        #        )
+        #    ]
+        #    command_error = command_status.stderr
+        #    print(code_runner_content)
+        #    print(command_status.stderr)
+        #    streamlit_action += [(
+        #        "error", 
+        #        {"body": messages[-1][1]},
+        #        ("Error", True),
+        #        messages[-1][0],
+        #        )]
+        #    error = "yes"
         streamlit_actions += [streamlit_action]
         return {
             "messages": messages,
             "streamlit_actions": streamlit_actions,
+            "error": error,
+            "command": code_runner_content,
+            #"command_error": command_error
             }
+    
+    #def search_error_online(self, state: State):
+    #    error = state["error"]
+    #    if error == "yes":
+    #        return "correct_run_code_search_term"
+    #    else:
+    #        return END
+    
+    #def correct_run_code_search_term(self, state: State):
+    #    messages = state["messages"]
+    #    streamlit_actions = state["streamlit_actions"]
+    #    technology = state["technology"]
+    #    command = state["command"]
+    #    command_error = state["command_error"]
+    #    streamlit_action = []
+    #    error_search_term = self.code_runner_correct_chain.invoke({
+    #        "technology": technology,
+    #        "messages": messages,
+    #        "command": command,
+    #        "command_error": command_error
+    #    })
+    #    messages += [
+    #        (
+    #            "assistant",
+    #            f"""
+    #            Term to be searched on StackExchange API:\n
+    #            {error_search_term}
+    #            """
+    #        )
+    #    ]
+    #    streamlit_action += [(
+    #        "info", 
+    #        {"body": messages[-1][1]},
+    #        ("Search error online", True),
+    #        messages[-1][0],
+    #        )]
+    #    streamlit_actions += [streamlit_action]
+    #    return {
+    #        "messages": messages,
+    #        "streamlit_actions": streamlit_actions,
+    #        "error_search_term": error_search_term,
+    #        }
+    
+    #def correct_run_code_search_results(self, state: State):
+    #    messages = state["messages"]
+    #    streamlit_actions = state["streamlit_actions"]
+    #    error_search_term = state["error_search_term"]
+    #    iterations_search = state["iterations_search"]
+    #    streamlit_action = []
+    #    stackexchange = StackExchangeAPIWrapper()
+    #    search_results = stackexchange.run(error_search_term)
+    #    messages += [
+    #        (
+    #            "assistant",
+    #            f"""
+    #            Results about the error on StackExchange API:\n
+    #            {search_results}
+    #            """
+    #        )
+    #    ]
+    #    streamlit_action += [(
+    #        "success", 
+    #        {"body": messages[-1][1]},
+    #        ("Search error online - results", True),
+    #        messages[-1][0],
+    #        )]
+    #    streamlit_actions += [streamlit_action]
+    #    iterations_search += 1
+    #    return {
+    #        "messages": messages,
+    #        "streamlit_actions": streamlit_actions,
+    #        "error_search_term": error_search_term,
+    #        "iterations_search": iterations_search
+    #        }
+
 
     def stream_graph_updates(self, technology, project_name, user_input):
         # The config is the **second positional argument** to stream() or invoke()!
@@ -557,7 +671,13 @@ class SoftwareDeveloper:
                 "error": "",
                 "error_message": "",
                 "project_name": project_name,
-                "technology": technology},
+                "technology": technology,
+                "command": "",
+                "command_error": "",
+                #"error_search_term": "",
+                #"iterations_search": 0,
+                #"error_search_results": ""
+                },
             self.config, 
             stream_mode = "values"
         )
