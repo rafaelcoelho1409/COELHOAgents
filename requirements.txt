@@ -21,3 +21,5 @@ pandas
 bs4
 stqdm
 stackapi
+youtube-transcript-api
+youtube-search
