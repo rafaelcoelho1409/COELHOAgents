@@ -17,7 +17,8 @@ st.set_page_config(
 pages_dict = {
     #"Home": "applications/home.py",
     "Simple Assistant": "applications/simple_assistant.py",
-    "Software Developer": "applications/software_developer.py"
+    "Software Developer": "applications/software_developer.py",
+    "YouTube Content Search": "applications/youtube_content_search.py",
 }
 pages = {
     "Home": st.Page("applications/home.py", title = "Home", icon = ":material/home:")} | {
@@ -31,7 +32,8 @@ pg = st.navigation({
         pages["Home"]],
     "Applications": [
         pages["Simple Assistant"],
-        pages["Software Developer"]
+        pages["Software Developer"],
+        pages["YouTube Content Search"]
     ],
 
 })
