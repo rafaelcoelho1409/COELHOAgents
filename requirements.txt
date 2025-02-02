@@ -23,3 +23,5 @@ stqdm
 stackapi
 youtube-transcript-api
 youtube-search
+pytubefix
+googletrans

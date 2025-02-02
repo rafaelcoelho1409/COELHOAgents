@@ -1,7 +1,9 @@
 import streamlit as st
+import stqdm
 import os
+import numpy as np
 from dotenv import load_dotenv
-from typing import List, Annotated
+from typing import List, Annotated, Dict
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 from youtube_search import YoutubeSearch
@@ -33,6 +35,8 @@ class State(TypedDict):
     messages: List
     streamlit_actions: List
     user_input: str
+    queries_results: List
+    unique_videos: List
 #------------------------------------------------
 
 class YouTubeContentSearch:
@@ -104,7 +108,6 @@ class YouTubeContentSearch:
     def search_youtube_videos(self, state: State):
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
-        error = state["error"]
         user_input = state["user_input"]
         streamlit_action = []
         youtube_search_queries = self.youtube_search_agent.invoke({
@@ -112,31 +115,55 @@ class YouTubeContentSearch:
         })
         search_queries = youtube_search_queries.search_queries
         queries_results = {}
-        for query in search_queries:
+        for query in stqdm.stqdm(search_queries, desc = "Searching YouTube videos"):
             results = YoutubeSearch(
                 query, 
                 max_results = self.max_results).to_dict()
-            results = [
-                [video["title"], video["id"], video["publish_time"]] 
+            results = [{
+                "title": video["title"], 
+                "id": video["id"], 
+                "publish_time": video["publish_time"],
+                "duration": video["duration"],
+                "views": video["views"],
+                "channel": video["channel"]}
                 for video 
                 in results]
             queries_results[query] = results
         messages += [
             (
                 "assistant",
-                queries_results
+                list(queries_results.keys())
             )
         ]
         streamlit_action += [(
             "json", 
-            {"body": messages[-1][1]},
-            ("Youtube search query", True),
+            {"body": messages[-1][1], "expanded": False},
+            ("Youtube search queries", False),
+            messages[-1][0],
+            )]
+        unique_videos = []
+        videos = [item for sublist in queries_results.values() for item in sublist]
+        for video in videos:
+            if video not in unique_videos:
+                unique_videos.append(video)
+        messages += [
+            (
+                "assistant",
+                unique_videos
+            )
+        ]
+        streamlit_action += [(
+            "json", 
+            {"body": messages[-1][1], "expanded": False},
+            ("Youtube videos searched", False),
             messages[-1][0],
             )]
         streamlit_actions += [streamlit_action]
         return {
             "messages": messages,
             "streamlit_actions": streamlit_actions,
+            "queries_results": queries_results,
+            "unique_videos": unique_videos
         }
 
     #------------------------------------------------
@@ -152,7 +179,8 @@ class YouTubeContentSearch:
                     "user"
                     )]],
                 "error": "",
-                "user_input": user_input
+                "user_input": user_input,
+                "queries_results": {}
                 },
             self.config, 
             stream_mode = "values"

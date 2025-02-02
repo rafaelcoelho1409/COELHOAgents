@@ -24,8 +24,8 @@ with st.sidebar.form("Project Settings"):
     max_results = st.number_input(
         label = "Maximum Results",
         min_value = 1,
-        #max_value = 50,
-        value = 10
+        max_value = 10,
+        value = 5
     )
     submit_project_settings = st.form_submit_button(
         "Set maximum results",
