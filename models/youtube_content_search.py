@@ -14,8 +14,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain_community.graphs import Neo4jGraph
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.documents import Document
+from langchain_experimental.graph_transformers import LLMGraphTransformer
+from langchain.text_splitter import TokenTextSplitter
 from langgraph.graph import END, StateGraph, START
 
 
@@ -69,12 +73,16 @@ class YouTubeContentSearch:
     def load_model(self, max_results):
         self.max_results = max_results
         self.youtube_search_agent = self.build_youtube_search_agent()
+        self.neo4j_graph = Neo4jGraph()
+        self.llm_transformer = LLMGraphTransformer(llm = self.llm)
         self.workflow = StateGraph(State)
         ###NODES
         self.workflow.add_node("search_youtube_videos", self.search_youtube_videos)
+        self.workflow.add_node("set_knowledge_graph", self.set_knowledge_graph)
         ###EDGES
         self.workflow.add_edge(START, "search_youtube_videos")
-        self.workflow.add_edge("search_youtube_videos", END)
+        self.workflow.add_edge("search_youtube_videos", "set_knowledge_graph")
+        self.workflow.add_edge("set_knowledge_graph", END)
         self.graph = self.workflow.compile(
             checkpointer = st.session_state["shared_memory"]#self.shared_memory
         )
@@ -137,7 +145,7 @@ class YouTubeContentSearch:
         ]
         streamlit_action += [(
             "json", 
-            {"body": messages[-1][1], "expanded": False},
+            {"body": messages[-1][1], "expanded": True},
             ("Youtube search queries", False),
             messages[-1][0],
             )]
@@ -164,6 +172,51 @@ class YouTubeContentSearch:
             "streamlit_actions": streamlit_actions,
             "queries_results": queries_results,
             "unique_videos": unique_videos
+        }
+    
+    def set_knowledge_graph(self, state: State):
+        messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
+        unique_videos = state["unique_videos"]
+        streamlit_action = []
+        transcripts_ids = [video["id"] for video in unique_videos]
+        transcriptions = {}
+        for video_id in stqdm.stqdm(transcripts_ids, desc = "Getting YouTube videos transcripts"):
+            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            for transcript in transcripts:
+                transcription = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages = [transcript.language_code])
+                transcriptions[video_id] = Document(
+                    page_content = " ".join([line["text"] for line in transcription]))
+        #Building Knowledge Graphs
+        text_splitter = TokenTextSplitter(chunk_size = 512, chunk_overlap = 24)
+        documents = text_splitter.split_documents(transcriptions.values())
+        #Transforming documents to graphs take a little more time, we need better ways to make it faster
+        graph_documents = self.llm_transformer.convert_to_graph_documents(documents)
+        st.write(graph_documents)
+        messages += [
+            (
+                "assistant",
+                graph_documents
+            )
+        ]
+        streamlit_action += [(
+            "json", 
+            {"body": messages[-1][1], "expanded": False},
+            ("Youtube videos subtitles", False),
+            messages[-1][0],
+            )]
+        with st.chat_message("assistant").spinner("Adding documents to the knowledge graph"):
+            self.neo4j_graph.add_graph_documents(
+                graph_documents,
+                baseEntityLabel = True,
+                include_source = True
+            )
+        streamlit_actions += [streamlit_action]
+        return {
+            "messages": messages,
+            "streamlit_actions": streamlit_actions,
         }
 
     #------------------------------------------------

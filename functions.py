@@ -241,3 +241,6 @@ def settings():
 @st.dialog("Application graph")
 def view_application_graph(graph):
     st.image(graph.get_graph().draw_mermaid_png())
+
+
+###>>>---CACHE FUNCTION---<<<###

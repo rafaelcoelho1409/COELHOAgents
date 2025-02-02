@@ -21,7 +21,8 @@ pandas
 bs4
 stqdm
 stackapi
+wikipedia
 youtube-transcript-api
 youtube-search
 pytubefix
-googletrans
+neo4j
