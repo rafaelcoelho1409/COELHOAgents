@@ -207,12 +207,11 @@ class YouTubeContentSearch:
             ("Youtube videos subtitles", False),
             messages[-1][0],
             )]
-        with st.chat_message("assistant").spinner("Adding documents to the knowledge graph"):
-            self.neo4j_graph.add_graph_documents(
-                graph_documents,
-                baseEntityLabel = True,
-                include_source = True
-            )
+        self.neo4j_graph.add_graph_documents(
+            graph_documents,
+            baseEntityLabel = True,
+            include_source = True
+        )
         streamlit_actions += [streamlit_action]
         return {
             "messages": messages,
