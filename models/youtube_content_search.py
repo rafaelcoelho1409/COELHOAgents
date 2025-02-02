@@ -193,7 +193,10 @@ class YouTubeContentSearch:
         text_splitter = TokenTextSplitter(chunk_size = 512, chunk_overlap = 24)
         documents = text_splitter.split_documents(transcriptions.values())
         #Transforming documents to graphs take a little more time, we need better ways to make it faster
-        graph_documents = self.llm_transformer.convert_to_graph_documents(documents)
+        graph_documents = []
+        for document in stqdm.stqdm(documents, desc = "Transforming documents to graphs"):
+            graph_documents += self.llm_transformer.convert_to_graph_documents([document])
+        #graph_documents = self.llm_transformer.convert_to_graph_documents(documents)
         st.write(graph_documents)
         messages += [
             (
