@@ -43,7 +43,11 @@ class SearchQueries(BaseModel):
     search_queries: List = Field(
         "A list of accurate search queries for YouTube videos.",
         title = "Search Queries",
-        description = "Search queries for YouTube videos.",
+        description = """
+        Search queries for YouTube videos. 
+        Must be only one search query at the maximum.
+        Give the best and most accurate search queries you can.
+        """,
         example = "How to make a cake"
     )
 
@@ -112,14 +116,15 @@ class YouTubeContentSearch:
         ###NODES
         self.workflow.add_node("search_youtube_videos", self.search_youtube_videos)
         self.workflow.add_node("set_knowledge_graph", self.set_knowledge_graph)
-        self.workflow.add_node("chatbot_loop", self.chatbot_loop)
+        self.workflow.add_node("final_step", self.final_step)
         ###EDGES
         self.workflow.add_edge(START, "search_youtube_videos")
         self.workflow.add_edge("search_youtube_videos", "set_knowledge_graph")
-        self.workflow.add_edge("set_knowledge_graph", "chatbot_loop")
+        self.workflow.add_edge("set_knowledge_graph", "final_step")
+        self.workflow.add_edge("final_step", END)
         self.graph = self.workflow.compile(
             checkpointer = st.session_state["shared_memory"],#self.shared_memory
-            interrupt_before = ["chatbot_loop"],
+            #interrupt_before = ["chatbot_loop"],
         )
     
     ###AGENTS
@@ -356,16 +361,44 @@ class YouTubeContentSearch:
         for document in stqdm.stqdm(documents, desc = "Transforming documents to graphs"):
             graph_documents += self.llm_transformer.convert_to_graph_documents([document])
         #graph_documents = self.llm_transformer.convert_to_graph_documents(documents)
+        print(graph_documents[0].__dir__())
+        #Graph nodes
         messages += [
             (
                 "assistant",
-                graph_documents
+                [x.nodes for x in graph_documents]
             )
         ]
         streamlit_action += [(
             "json", 
             {"body": messages[-1][1], "expanded": False},
-            ("Youtube videos subtitles", False),
+            ("Graph nodes", False),
+            messages[-1][0],
+            )]
+        #Graph relationships
+        messages += [
+            (
+                "assistant",
+                [x.relationships for x in graph_documents]
+            )
+        ]
+        streamlit_action += [(
+            "json", 
+            {"body": messages[-1][1], "expanded": False},
+            ("Graph relationships", False),
+            messages[-1][0],
+            )]
+        #Graph source
+        messages += [
+            (
+                "assistant",
+                [x.source for x in graph_documents]
+            )
+        ]
+        streamlit_action += [(
+            "json", 
+            {"body": messages[-1][1], "expanded": False},
+            ("Graph source", False),
             messages[-1][0],
             )]
         self.neo4j_graph.add_graph_documents(
@@ -382,23 +415,11 @@ class YouTubeContentSearch:
             "streamlit_actions": streamlit_actions,
         }
     
-    def chatbot_loop(self, state: State):
+    def final_step(self, state: State):
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         user_input = state["user_input"]
         streamlit_action = []
-        messages += [
-            (
-                "user",
-                user_input
-            )
-        ]
-        streamlit_action += [(
-            "markdown", 
-            {"body": user_input},
-            ("User request", True),
-            "user"
-            )]
         question_answer = self.rag_chain.invoke({"question": user_input})
         messages += [
             (
@@ -409,18 +430,15 @@ class YouTubeContentSearch:
         streamlit_action += [(
             "markdown", 
             {"body": question_answer},
-            ("Assistant response", False),
+            ("Assistant response", True),
             "assistant"
             )]
         streamlit_actions += [streamlit_action]
-        return Command(
-            update = {
+        return {
                 "messages": messages,
                 "streamlit_actions": streamlit_actions,
                 "user_input": user_input
-            },
-            goto = "chatbot_loop"
-        )
+            }
 
 
 
