@@ -361,7 +361,7 @@ class YouTubeContentSearch:
         for document in stqdm.stqdm(documents, desc = "Transforming documents to graphs"):
             graph_documents += self.llm_transformer.convert_to_graph_documents([document])
         #graph_documents = self.llm_transformer.convert_to_graph_documents(documents)
-        print(graph_documents[0].__dir__())
+        #print(graph_documents[0].__dir__())
         #Graph nodes
         messages += [
             (
