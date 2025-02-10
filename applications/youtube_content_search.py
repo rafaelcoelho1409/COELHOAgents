@@ -1,8 +1,5 @@
 import streamlit as st
 from langgraph.checkpoint.memory import MemorySaver
-import os
-import json
-from pathlib import Path
 from functions import (
     check_model_and_temperature,
     initialize_shared_memory,
@@ -52,6 +49,8 @@ if submit_project_settings:
     st.session_state["snapshot"] = st.session_state["youtube_content_search_agent"].graph.get_state(
         st.session_state["youtube_content_search_agent"].config)
 
+if not "snapshot" in st.session_state:
+    st.session_state["snapshot"] = []
 
 try:
     max_results = st.session_state["max_results"]
@@ -79,24 +78,36 @@ if view_graph:
 
 
 st.session_state["snapshot"] += chatbot_agent.graph.get_state(chatbot_agent.config)
-messages_block = [x for i, x in enumerate(st.session_state["snapshot"]) if i % 7 == 0]
-if not submit_project_settings:
-    try:
-        for actions in messages_block[-1]["streamlit_actions"]:
-            if actions != []:
-                for action in actions:
-                    st.chat_message(
-                        action[3]
-                    ).expander(
-                        action[2][0], 
-                        expanded = action[2][1]
-                    ).__getattribute__(
-                        action[0]
-                    )(
-                        **action[1]
-                    )
-    except:
-        pass
+messages_blocks_ = [
+    x 
+    for i, x 
+    in enumerate(st.session_state["snapshot"])
+    if i % 7 == 0
+    ]
+messages_blocks = []
+for item in messages_blocks_:
+    if item not in messages_blocks:
+        messages_blocks.append(item)
+streamlit_actions = []
+for item in messages_blocks:
+    if item not in streamlit_actions:
+        streamlit_actions += item["streamlit_actions"]
+#if not submit_project_settings:
+for actions in streamlit_actions:
+    if actions != []:
+        for action in actions:
+            st.chat_message(
+                action[3]
+            ).expander(
+                action[2][0], 
+                expanded = action[2][1]
+            ).__getattribute__(
+                action[0]
+            )(
+                **action[1]
+            )
+#else:
+#    pass
 
 
 if prompt := st.chat_input():

@@ -1,9 +1,10 @@
 import streamlit as st
 import stqdm
 import os
-import numpy as np
+import uuid
+import pandas as pd
 from dotenv import load_dotenv
-from typing import List, Annotated, Dict
+from typing import List
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 from youtube_search import YoutubeSearch
@@ -11,14 +12,13 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from langchain_ollama import ChatOllama
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_community.graphs import Neo4jGraph
 from langchain_community.vectorstores import Neo4jVector
 from langchain_community.vectorstores.neo4j_vector import remove_lucene_chars
-from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.documents import Document
@@ -33,7 +33,8 @@ from langchain_core.runnables import (
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 from langchain.text_splitter import TokenTextSplitter
 from langgraph.graph import END, StateGraph, START
-from langgraph.types import interrupt, Command
+from neo4j import GraphDatabase
+import networkx as nx
 
 
 load_dotenv()
@@ -102,6 +103,9 @@ class YouTubeContentSearch:
 
     def load_model(self, max_results):
         self.max_results = max_results
+        #clearing all previous Neo4J relationships to avoid context confusion
+        self.clear_neo4j_graph()
+        #------------------------------------------------
         self.neo4j_graph = Neo4jGraph()
         self.vector_index = Neo4jVector.from_existing_graph(
             HuggingFaceEmbeddings(model_name = "all-MiniLM-L6-v2"),
@@ -276,6 +280,17 @@ class YouTubeContentSearch:
             buffer.append(HumanMessage(content = human))
             buffer.append(AIMessage(content = ai))
         return buffer
+    
+    def clear_neo4j_graph(self):
+        driver = GraphDatabase.driver(
+            os.getenv("NEO4J_URI"), 
+            auth = (
+                os.getenv("NEO4J_USERNAME"), 
+                os.getenv("NEO4J_PASSWORD")
+                )
+            )
+        with driver.session(database = "neo4j") as session:
+            session.run("MATCH (n) DETACH DELETE n")
 
     #------------------------------------------------
     ###NODES
@@ -310,8 +325,11 @@ class YouTubeContentSearch:
             )
         ]
         streamlit_action += [(
-            "json", 
-            {"body": messages[-1][1], "expanded": True},
+            "markdown", 
+            {
+                "body": "- " + "\n- ".join(str(x) for x in messages[-1][1]), 
+                #"expanded": True
+                },
             ("Youtube search query", False),
             messages[-1][0],
             )]
@@ -327,8 +345,12 @@ class YouTubeContentSearch:
             )
         ]
         streamlit_action += [(
-            "json", 
-            {"body": messages[-1][1], "expanded": False},
+            "dataframe", 
+            {
+                "data": messages[-1][1],
+                "use_container_width": True,
+                #"expanded": False
+                },
             ("Youtube videos searched", False),
             messages[-1][0],
             )]
@@ -366,30 +388,56 @@ class YouTubeContentSearch:
         for document in stqdm.stqdm(documents, desc = "Transforming documents to graphs"):
             graph_documents += self.llm_transformer.convert_to_graph_documents([document])
         #graph_documents = self.llm_transformer.convert_to_graph_documents(documents)
-        #print(graph_documents[0].__dir__())
         #Graph nodes
+        nodes, nodes_dict = [], {}
+        for x in graph_documents:
+            nodes += x.nodes
+        nodes_dict["id"] = [x.id for x in nodes]
+        nodes_dict["type"] = [x.type for x in nodes]
+        nodes_dict["properties"] = [x.properties for x in nodes]
         messages += [
             (
                 "assistant",
-                [x.nodes for x in graph_documents]
+                #[x.nodes for x in graph_documents]
+                nodes_dict
             )
         ]
         streamlit_action += [(
-            "json", 
-            {"body": messages[-1][1], "expanded": False},
+            "dataframe", 
+            {
+                "data": messages[-1][1], 
+                "use_container_width": True,
+                #"expanded": False
+                },
             ("Graph nodes", False),
             messages[-1][0],
             )]
         #Graph relationships
+        relationships, relationships_dict = [], {}
+        for x in graph_documents:
+            relationships += x.relationships
+        relationships_dict["source_id"] = [x.source.id for x in relationships]
+        relationships_dict["source_type"] = [x.source.type for x in relationships]
+        relationships_dict["source_properties"] = [x.source.properties for x in relationships]
+        relationships_dict["target_id"] = [x.target.id for x in relationships]
+        relationships_dict["target_type"] = [x.target.type for x in relationships]
+        relationships_dict["target_properties"] = [x.target.properties for x in relationships]
+        relationships_dict["type"] = [x.type for x in relationships]
+        relationships_dict["properties"] = [x.properties for x in relationships] 
         messages += [
             (
                 "assistant",
-                [x.relationships for x in graph_documents]
+                #[x.relationships for x in graph_documents]
+                relationships_dict
             )
         ]
         streamlit_action += [(
-            "json", 
-            {"body": messages[-1][1], "expanded": False},
+            "dataframe", 
+            {
+                "data": messages[-1][1], 
+                "use_container_width": True,
+                #"expanded": False
+                },
             ("Graph relationships", False),
             messages[-1][0],
             )]
@@ -397,12 +445,15 @@ class YouTubeContentSearch:
         messages += [
             (
                 "assistant",
-                [x.source for x in graph_documents]
+                [x.source.page_content for x in graph_documents]
             )
         ]
         streamlit_action += [(
-            "json", 
-            {"body": messages[-1][1], "expanded": False},
+            "markdown", 
+            {
+                "body": "---\n".join(x for x in messages[-1][1]), 
+                #"expanded": False
+                },
             ("Graph source", False),
             messages[-1][0],
             )]
@@ -538,22 +589,23 @@ class YouTubeChatbot:
             ("User request", True),
             "user"
             )]
-        question = self.rag_chain.invoke({"question": user_input})
+        answer = self.rag_chain.invoke({"question": user_input})
         messages += [
             (
                 "assistant",
-                question
+                answer
             )
         ]
         streamlit_action += [(
             "markdown", 
-            {"body": question},
+            {"body": answer},
             ("Assistant response", True),
             "assistant"
             )]
+        streamlit_actions += [streamlit_action]
         return {
             "messages": messages,
-            "streamlit_actions": streamlit_actions + [streamlit_action],
+            "streamlit_actions": streamlit_actions,
             "user_input": user_input
         }
     
@@ -561,13 +613,6 @@ class YouTubeChatbot:
         # The config is the **second positional argument** to stream() or invoke()!
         events = self.graph.stream(
             {
-                "messages": [("user", user_input)], 
-                "streamlit_actions": [[(
-                    "markdown", 
-                    {"body": user_input},
-                    ("User request", True),
-                    "user"
-                    )]],
                 "error": "",
                 "user_input": user_input,
                 "query_results": {}

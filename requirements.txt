@@ -26,3 +26,5 @@ youtube-transcript-api
 youtube-search
 pytubefix
 neo4j
+networkx
+plotly

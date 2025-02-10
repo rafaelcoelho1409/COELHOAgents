@@ -3,3 +3,4 @@ __pycache__
 .env
 *Chinook.db
 *travel2*
+assets/temp_memory.pkl
