@@ -39,14 +39,16 @@ from langgraph.types import interrupt, Command
 load_dotenv()
 #------------------------------------------------
 ###STRUCTURES
-class SearchQueries(BaseModel):
-    search_queries: List = Field(
-        "A list of accurate search queries for YouTube videos.",
-        title = "Search Queries",
+class SearchQuery(BaseModel):
+    search_query: str = Field(
+        #"An accurate search query for YouTube videos.",
+        title = "Search Query",
         description = """
-        Search queries for YouTube videos. 
-        Must be only one search query at the maximum.
-        Give the best and most accurate search queries you can.
+        Search query for YouTube videos. 
+        Must be only 1 search query at the maximum.
+        You must provide a search query with the best keywords that is accurate and concise.
+        It can be an extense search query if necessary, but it must be only one.
+        Give the best and most accurate search query you can.
         """,
         example = "How to make a cake"
     )
@@ -67,7 +69,7 @@ class State(TypedDict):
     messages: List
     streamlit_actions: List
     user_input: str
-    queries_results: List
+    query_results: List
     unique_videos: List
 #------------------------------------------------
 
@@ -138,14 +140,14 @@ class YouTubeContentSearch:
                     Based on the following prompt:\n\n
                     {user_input}\n\n
                     You must take this user input and transform it into 
-                    the most efficient youtube search queries you can.\n
-                    It must be in a list format.\n
+                    the most efficient youtube search query you can.\n
+                    It must be in a string format.\n
                     """,
                 ),
                 ("placeholder", "{messages}"),
             ]
         )
-        chain = prompt | self.llm.with_structured_output(SearchQueries)
+        chain = prompt | self.llm.with_structured_output(SearchQuery)
         return chain
     
     def build_entity_chain(self):
@@ -282,12 +284,12 @@ class YouTubeContentSearch:
         streamlit_actions = state["streamlit_actions"]
         user_input = state["user_input"]
         streamlit_action = []
-        youtube_search_queries = self.youtube_search_agent.invoke({
+        youtube_search_query = self.youtube_search_agent.invoke({
             "user_input": user_input
         })
-        search_queries = youtube_search_queries.search_queries
-        queries_results = {}
-        for query in stqdm.stqdm(search_queries, desc = "Searching YouTube videos"):
+        search_query = [youtube_search_query.search_query]
+        query_results = {}
+        for query in stqdm.stqdm(search_query, desc = "Searching YouTube videos"):
             results = YoutubeSearch(
                 query, 
                 max_results = self.max_results).to_dict()
@@ -300,21 +302,21 @@ class YouTubeContentSearch:
                 "channel": video["channel"]}
                 for video 
                 in results]
-            queries_results[query] = results
+            query_results[query] = results
         messages += [
             (
                 "assistant",
-                list(queries_results.keys())
+                list(query_results.keys())
             )
         ]
         streamlit_action += [(
             "json", 
             {"body": messages[-1][1], "expanded": True},
-            ("Youtube search queries", False),
+            ("Youtube search query", False),
             messages[-1][0],
             )]
         unique_videos = []
-        videos = [item for sublist in queries_results.values() for item in sublist]
+        videos = [item for sublist in query_results.values() for item in sublist]
         for video in videos:
             if video not in unique_videos:
                 unique_videos.append(video)
@@ -334,7 +336,7 @@ class YouTubeContentSearch:
         return {
             "messages": messages,
             "streamlit_actions": streamlit_actions,
-            "queries_results": queries_results,
+            "query_results": query_results,
             "unique_videos": unique_videos
         }
     
@@ -346,13 +348,16 @@ class YouTubeContentSearch:
         transcripts_ids = [video["id"] for video in unique_videos]
         transcriptions = {}
         for video_id in stqdm.stqdm(transcripts_ids, desc = "Getting YouTube videos transcripts"):
-            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
-            for transcript in transcripts:
-                transcription = YouTubeTranscriptApi.get_transcript(
-                    video_id,
-                    languages = [transcript.language_code])
-                transcriptions[video_id] = Document(
-                    page_content = " ".join([line["text"] for line in transcription]))
+            try:
+                transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+                for transcript in transcripts:
+                    transcription = YouTubeTranscriptApi.get_transcript(
+                        video_id,
+                        languages = [transcript.language_code])
+                    transcriptions[video_id] = Document(
+                        page_content = " ".join([line["text"] for line in transcription]))
+            except:
+                pass
         #Building Knowledge Graphs
         text_splitter = TokenTextSplitter(chunk_size = 512, chunk_overlap = 24)
         documents = text_splitter.split_documents(transcriptions.values())
@@ -456,7 +461,7 @@ class YouTubeContentSearch:
                     )]],
                 "error": "",
                 "user_input": user_input,
-                "queries_results": {}
+                "query_results": {}
                 },
             self.config, 
             stream_mode = "values"
@@ -475,3 +480,114 @@ class YouTubeContentSearch:
                     )(
                         **action[1]
                     )
+
+
+
+class YouTubeChatbot:
+    def __init__(self, framework, temperature_filter, model_name, shared_memory):
+        self.shared_memory = shared_memory
+        self.config = {
+            "configurable": {"thread_id": "1"},
+            "callbacks": [StreamlitCallbackHandler(st.container())]}
+        self.llm_framework = {
+            "Groq": ChatGroq,
+            "Ollama": ChatOllama,
+            "Google Generative AI": ChatGoogleGenerativeAI,
+            "SambaNova": ChatSambaNovaCloud,
+            "Scaleway": ChatOpenAI
+        }
+        self.llm_model = self.llm_framework[framework]
+        if framework == "Scaleway":
+            self.llm = ChatOpenAI(
+                base_url = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                api_key = os.getenv("SCW_SECRET_KEY"),
+                model = model_name,
+                temperature =  temperature_filter
+            )
+        else:
+            self.llm = self.llm_model(
+                model = model_name,
+                temperature = temperature_filter,
+            )
+
+    def load_model(self, rag_chain):
+        ###GRAPH
+        self.rag_chain = rag_chain
+        self.graph_builder = StateGraph(State)
+        self.graph_builder.add_node("chatbot", self.chatbot)
+        self.graph_builder.add_edge(START, "chatbot")
+        self.graph_builder.add_edge("chatbot", END)
+        self.graph = self.graph_builder.compile(
+            checkpointer = self.shared_memory
+        )
+
+    def chatbot(self, state: State):
+        messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
+        user_input = state["user_input"]
+        streamlit_action = []
+        messages += [
+            (
+                "user",
+                user_input
+            )
+        ]
+        streamlit_action += [(
+            "markdown", 
+            {"body": user_input},
+            ("User request", True),
+            "user"
+            )]
+        question = self.rag_chain.invoke({"question": user_input})
+        messages += [
+            (
+                "assistant",
+                question
+            )
+        ]
+        streamlit_action += [(
+            "markdown", 
+            {"body": question},
+            ("Assistant response", True),
+            "assistant"
+            )]
+        return {
+            "messages": messages,
+            "streamlit_actions": streamlit_actions + [streamlit_action],
+            "user_input": user_input
+        }
+    
+    def stream_graph_updates(self, user_input):
+        # The config is the **second positional argument** to stream() or invoke()!
+        events = self.graph.stream(
+            {
+                "messages": [("user", user_input)], 
+                "streamlit_actions": [[(
+                    "markdown", 
+                    {"body": user_input},
+                    ("User request", True),
+                    "user"
+                    )]],
+                "error": "",
+                "user_input": user_input,
+                "query_results": {}
+                },
+            self.config, 
+            stream_mode = "values"
+        )
+        for i, event in enumerate(events):
+            if i != 0:
+                actions = event["streamlit_actions"][-1]
+                if actions != []:
+                    for action in actions:
+                        st.chat_message(
+                            action[3]
+                        ).expander(
+                            action[2][0], 
+                            expanded = action[2][1]
+                        ).__getattribute__(
+                            action[0]
+                        )(
+                            **action[1]
+                        )
+
