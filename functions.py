@@ -2,8 +2,12 @@ import streamlit as st
 import base64
 import ollama
 import subprocess
+import os
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langgraph.checkpoint.memory import MemorySaver
+import networkx as nx
+from pyvis.network import Network
+from neo4j import GraphDatabase
 
 
 ###>>>---LOCAL FUNCTIONS---<<<###
@@ -241,6 +245,72 @@ def settings():
 @st.dialog("Application graph")
 def view_application_graph(graph):
     st.image(graph.get_graph().draw_mermaid_png())
+
+
+@st.dialog("Application graphs")
+def view_application_graphs(graph_dict):
+    cols = st.columns(len(graph_dict))
+    for i, (key, value) in enumerate(graph_dict.items()):
+        cols[i].header(key)
+        cols[i].image(value.get_graph().draw_mermaid_png())
+
+
+@st.dialog("Neo4J Context Graph")
+def view_neo4j_context_graph():
+    driver = GraphDatabase.driver(
+        os.getenv("NEO4J_URI"), 
+        auth = (
+            os.getenv("NEO4J_USERNAME"), 
+            os.getenv("NEO4J_PASSWORD")
+            )
+        )
+    def fetch_graph_data(driver):
+        """
+        Retrieve nodes and relationships from Neo4j.
+        Assumes that each node has an 'id' property.
+        """
+        query = "MATCH (n)-[r]->(m) RETURN n, r, m"
+        nodes, edges = {}, []
+        with driver.session() as session:
+            result = session.run(query)
+            for record in result:
+                # Retrieve nodes from the record.
+                node_a, node_b = record["n"], record["m"]
+                # Use a property 'id' if available, else use Neo4j's internal id.
+                id_a, id_b = node_a.get("id", node_a.id), node_b.get("id", node_b.id)
+                # Store node data if not already present.
+                if id_a not in nodes:
+                    nodes[id_a] = dict(node_a)
+                if id_b not in nodes:
+                    nodes[id_b] = dict(node_b)
+                # Append the edge (with relationship properties).
+                edges.append((id_a, id_b, dict(record["r"])))
+        return nodes, edges
+    nodes_data, edges_data = fetch_graph_data(driver)
+    #Build a NetworkX graph from the fetched data
+    # Create a directed graph (use nx.Graph() for undirected).
+    G = nx.DiGraph()
+    # Add nodes along with their properties.
+    for node_id, properties in nodes_data.items():
+        G.add_node(node_id, **properties)
+    # Add edges along with any relationship properties.
+    for source, target, rel_props in edges_data:
+        G.add_edge(source, target, **rel_props)
+    #Create an interactive Pyvis visualization from the NetworkX graph
+    # Initialize a Pyvis Network.
+    pyvis_net = Network(height = "600px", width = "100%", directed = True)
+    # Load the NetworkX graph into the Pyvis network.
+    pyvis_net.from_nx(G)
+    # (Optional) Apply a layout algorithm for better visualization.
+    pyvis_net.force_atlas_2based()
+    # Instead of opening a browser, save the Pyvis network as an HTML file.
+    pyvis_net.save_graph("assets/graph.html")
+    # Read the saved HTML file.
+    with open("assets/graph.html", "r", encoding = "utf-8") as f:
+        html_graph = f.read()
+    st.title("Interactive Neo4j Graph Visualization")
+    # Embed the Pyvis-generated HTML in your Streamlit app.
+    st.components.v1.html(html_graph, height = 600, scrolling = True)
 
 
 ###>>>---CACHE FUNCTION---<<<###

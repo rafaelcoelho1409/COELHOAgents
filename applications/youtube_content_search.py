@@ -3,7 +3,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from functions import (
     check_model_and_temperature,
     initialize_shared_memory,
-    view_application_graph
+    view_application_graphs,
+    view_neo4j_context_graph
 )
 from models.youtube_content_search import YouTubeContentSearch, YouTubeChatbot
 
@@ -69,12 +70,23 @@ chatbot_agent = YouTubeChatbot(
 chatbot_agent.load_model(st.session_state["youtube_content_search_agent"].rag_chain)
 
 
-view_graph = st.session_state["view_graph_button_container"].button(
-    label = "View application graph",
+view_app_graph = st.session_state["view_graph_button_container"].button(
+    label = "View application graphs",
     use_container_width = True,
 )
-if view_graph:
-    view_application_graph(st.session_state["youtube_content_search_agent"].graph)
+if view_app_graph:
+    view_application_graphs(
+        {
+            "YouTube Content Search": st.session_state["youtube_content_search_agent"].graph,
+            "YouTube Chatbot": chatbot_agent.graph})
+    
+
+view_neo4j_graph = st.sidebar.button(
+    label = "View Neo4j context graph",
+    use_container_width = True,
+)
+if view_neo4j_graph:
+    view_neo4j_context_graph()
 
 
 st.session_state["snapshot"] += chatbot_agent.graph.get_state(chatbot_agent.config)

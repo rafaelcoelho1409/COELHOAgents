@@ -28,3 +28,4 @@ pytubefix
 neo4j
 networkx
 plotly
+pyvis
