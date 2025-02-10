@@ -310,11 +310,12 @@ class YouTubeContentSearch:
                 max_results = self.max_results).to_dict()
             results = [{
                 "title": video["title"], 
-                "id": video["id"], 
+                "channel": video["channel"],
                 "publish_time": video["publish_time"],
                 "duration": video["duration"],
                 "views": video["views"],
-                "channel": video["channel"]}
+                "id": video["id"], 
+                }
                 for video 
                 in results]
             query_results[query] = results
@@ -451,7 +452,7 @@ class YouTubeContentSearch:
         streamlit_action += [(
             "markdown", 
             {
-                "body": "---\n".join(x for x in messages[-1][1]), 
+                "body": "---\n\n".join(x for x in messages[-1][1]), 
                 #"expanded": False
                 },
             ("Graph source", False),

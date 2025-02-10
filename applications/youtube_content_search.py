@@ -20,7 +20,7 @@ if model_temperature_checker == False:
 
 with st.sidebar.form("Project Settings"):
     max_results = st.number_input(
-        label = "Maximum Results",
+        label = "Maximum videos to search",
         min_value = 1,
         #max_value = 10,
         step = 1,
