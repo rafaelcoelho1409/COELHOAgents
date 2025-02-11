@@ -1,6 +1,7 @@
 import streamlit as st
 from langgraph.checkpoint.memory import MemorySaver
 import uuid
+import numpy as np
 from functions import (
     check_model_and_temperature,
     initialize_shared_memory,
@@ -267,6 +268,11 @@ for item in messages_blocks:
     if item not in streamlit_actions:
         streamlit_actions += item["streamlit_actions"]
 #if not submit_project_settings:
+try:
+    index_start_messages = np.where(np.array([x[0][3] for x in streamlit_actions]) == "user")[0][1]
+    streamlit_actions = streamlit_actions[index_start_messages:]
+except:
+    pass
 for actions in streamlit_actions:
     if actions != []:
         for action in actions:
