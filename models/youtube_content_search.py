@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from typing import List
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
-from youtube_search import YoutubeSearch
 from youtube_transcript_api import YouTubeTranscriptApi
 from langchain_ollama import ChatOllama
 from langchain_groq import ChatGroq
@@ -34,7 +33,7 @@ from langchain_experimental.graph_transformers import LLMGraphTransformer
 from langchain.text_splitter import TokenTextSplitter
 from langgraph.graph import END, StateGraph, START
 from neo4j import GraphDatabase
-#from pytubefix import Search
+from pytubefix import YouTube, Channel, Playlist
 from pytubefix.contrib.search import Search, Filter
 
 load_dotenv()
@@ -101,7 +100,18 @@ class YouTubeContentSearch:
                 temperature = temperature_filter,
             )
 
-    def load_model(self, max_results, search_type, upload_date, video_type, duration, features, sort_by):
+    def load_model(
+            self, 
+            max_results = None, 
+            search_type = None, 
+            upload_date = None, 
+            video_type = None, 
+            duration = None, 
+            features = None, 
+            sort_by = None,
+            video_url = None,
+            channel_url = None,
+            playlist_url = None):
         self.max_results = max_results
         self.search_type = search_type
         self.upload_date = upload_date
@@ -109,6 +119,9 @@ class YouTubeContentSearch:
         self.duration = duration
         self.features = features
         self.sort_by = sort_by
+        self.video_url = video_url
+        self.channel_url = channel_url
+        self.playlist_url = playlist_url
         #clearing all previous Neo4J relationships to avoid context confusion
         self.clear_neo4j_graph()
         #------------------------------------------------
@@ -136,7 +149,6 @@ class YouTubeContentSearch:
         self.workflow.add_edge("final_step", END)
         self.graph = self.workflow.compile(
             checkpointer = st.session_state["shared_memory"],#self.shared_memory
-            #interrupt_before = ["chatbot_loop"],
         )
     
     ###AGENTS
@@ -309,8 +321,9 @@ class YouTubeContentSearch:
             "user_input": user_input
         })
         search_query = [youtube_search_query.search_query]
+        search_results_dict = {}
         if self.search_type == "Search":
-            search_results_dict, search_filters_dict = {}, {}
+            search_filters_dict = {}
             search_filters_dict_ = {
                 "upload_date": self.upload_date,
                 "type": self.video_type,
@@ -343,50 +356,114 @@ class YouTubeContentSearch:
                     "views": [video.views for video in search_results],
                     "length": [video.length for video in search_results],
                     "captions": [str(list(video.captions.lang_code_index.keys())) for video in search_results],
-                    "keywords": [video.keywords for video in search_results],
-                    "description": [video.description for video in search_results],
+                    #"keywords": [video.keywords for video in search_results],
+                    #"description": [video.description for video in search_results],
                     "video_id": [video.video_id for video in search_results],
                 }
-        messages += [
-            (
-                "assistant",
-                list(search_results_dict.keys())
-            )
-        ]
-        streamlit_action += [(
-            "markdown", 
-            {
-                "body": "- " + "\n- ".join(str(x) for x in messages[-1][1]), 
-                #"expanded": True
-                },
-            ("Youtube search query", False),
-            messages[-1][0],
-            )]
-        unique_videos_df = pd.concat(
-            [pd.DataFrame(search_results_dict[key]) for key in search_results_dict.keys()],
-            axis = 0)
-        unique_videos = unique_videos_df[~unique_videos_df["video_id"].duplicated()].to_dict()
-        messages += [
-            (
-                "assistant",
-                unique_videos
-            )
-        ]
-        streamlit_action += [(
-            "dataframe", 
-            {
-                "data": messages[-1][1],
-                "use_container_width": True,
-                #"expanded": False
-                },
-            ("Youtube videos searched", False),
-            messages[-1][0],
-            )]
-        streamlit_actions += [streamlit_action]
+        elif self.search_type == "Video":
+            search_results = YouTube(self.video_url)
+            search_results_dict[self.video_url] = {
+                "title": [search_results.title],
+                "author": [search_results.author],
+                "publish_date": [search_results.publish_date],
+                "views": [search_results.views],
+                "length": [search_results.length],
+                "captions": [str(list(search_results.captions.lang_code_index.keys()))],
+                #"keywords": [search_results.keywords],
+                #"description": [search_results.description],
+                "video_id": [search_results.video_id],
+            }
+        elif self.search_type == "Channel":
+            channel_results_dict = {}
+            channel_results = Channel(self.channel_url)
+            channel_results_dict[channel_results.channel_name] = {
+                "description": [channel_results.description],
+                "last_updated": [channel_results.last_updated]}
+            search_results_dict[self.channel_url] = pd.DataFrame({
+                "title": [x.title for x in channel_results.videos[:self.max_results]],
+                "captions": [str(list(x.captions.lang_code_index.keys())) for x in channel_results.videos[:self.max_results]],
+                "length": [x.length for x in channel_results.videos[:self.max_results]],
+                "publish_date": [x.publish_date for x in channel_results.videos[:self.max_results]],
+                "views": [x.views for x in channel_results.videos[:self.max_results]],
+                "video_id": [x.video_id for x in channel_results.videos[:self.max_results]],
+                "views": [x.views for x in channel_results.videos[:self.max_results]],
+            }).to_dict()
+            messages += [
+                (
+                    "assistant",
+                    channel_results_dict[channel_results.channel_name]
+                )
+            ]
+            streamlit_action += [(
+                "markdown", 
+                {
+                    "body": f"""
+                        - **Channel**: {channel_results.channel_name}  
+                        - **Description**: {messages[-1][1]["description"][0]}  
+                        - **Last updated**: {messages[-1][1]["last_updated"][0]}  
+                    """, 
+                    #"expanded": True
+                    },
+                ("Channel informations", True),
+                messages[-1][0],
+                )]
+        elif self.search_type == "Playlist":
+            playlist_results = Playlist(self.playlist_url)
+            search_results_dict[self.playlist_url] = pd.DataFrame({
+                "title": [x.title for x in playlist_results.videos[:self.max_results]],
+                "captions": [str(list(x.captions.lang_code_index.keys())) for x in playlist_results.videos[:self.max_results]],
+                "length": [x.length for x in playlist_results.videos[:self.max_results]],
+                "publish_date": [x.publish_date for x in playlist_results.videos[:self.max_results]],
+                "views": [x.views for x in playlist_results.videos[:self.max_results]],
+                "video_id": [x.video_id for x in playlist_results.videos[:self.max_results]],
+                "views": [x.views for x in playlist_results.videos[:self.max_results]],
+            }).to_dict()
+
+        if self.search_type != "Video":
+            messages += [
+                (
+                    "assistant",
+                    list(search_results_dict.keys())
+                )
+            ]
+            streamlit_action += [(
+                "markdown", 
+                {
+                    "body": "- " + "\n- ".join(str(x) for x in messages[-1][1]), 
+                    #"expanded": True
+                    },
+                ("Youtube search query", False),
+                messages[-1][0],
+                )]
+            unique_videos_df = pd.concat(
+                [pd.DataFrame(search_results_dict[key]) for key in search_results_dict.keys()],
+                axis = 0)
+            unique_videos = unique_videos_df[~unique_videos_df["video_id"].duplicated()].to_dict()
+            messages += [
+                (
+                    "assistant",
+                    unique_videos
+                )
+            ]
+            streamlit_action += [(
+                "dataframe", 
+                {
+                    "data": messages[-1][1],
+                    "use_container_width": True,
+                    #"expanded": False
+                    },
+                ("Youtube videos searched", False),
+                messages[-1][0],
+                )]
+            streamlit_actions += [streamlit_action]
+        else:
+            unique_videos = {
+                "video_id": search_results_dict[self.video_url]["video_id"]
+            }
         return {
             "messages": messages,
             "streamlit_actions": streamlit_actions,
-            #"search_results": search_results,
+            "search_results": search_results_dict,
             "unique_videos": unique_videos
         }
     
@@ -395,7 +472,10 @@ class YouTubeContentSearch:
         streamlit_actions = state["streamlit_actions"]
         unique_videos = state["unique_videos"]
         streamlit_action = []
-        transcripts_ids = unique_videos["video_id"].values()#[video["id"] for video in unique_videos]
+        if self.search_type != "Video":
+            transcripts_ids = unique_videos["video_id"].values()#[video["id"] for video in unique_videos]
+        else:
+            transcripts_ids = unique_videos["video_id"]
         transcriptions = {}
         for video_id in stqdm.stqdm(transcripts_ids, desc = "Getting YouTube videos transcripts"):
             try:
@@ -422,7 +502,7 @@ class YouTubeContentSearch:
             nodes += x.nodes
         nodes_dict["id"] = [x.id for x in nodes]
         nodes_dict["type"] = [x.type for x in nodes]
-        nodes_dict["properties"] = [x.properties for x in nodes]
+        #nodes_dict["properties"] = [x.properties for x in nodes]
         messages += [
             (
                 "assistant",
@@ -446,12 +526,12 @@ class YouTubeContentSearch:
             relationships += x.relationships
         relationships_dict["source_id"] = [x.source.id for x in relationships]
         relationships_dict["source_type"] = [x.source.type for x in relationships]
-        relationships_dict["source_properties"] = [x.source.properties for x in relationships]
+        #relationships_dict["source_properties"] = [x.source.properties for x in relationships]
         relationships_dict["target_id"] = [x.target.id for x in relationships]
         relationships_dict["target_type"] = [x.target.type for x in relationships]
-        relationships_dict["target_properties"] = [x.target.properties for x in relationships]
+        #relationships_dict["target_properties"] = [x.target.properties for x in relationships]
         relationships_dict["type"] = [x.type for x in relationships]
-        relationships_dict["properties"] = [x.properties for x in relationships] 
+        #relationships_dict["properties"] = [x.properties for x in relationships] 
         messages += [
             (
                 "assistant",

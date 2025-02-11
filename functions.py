@@ -61,7 +61,7 @@ def initialize_shared_memory():
 
 
 ###>>>---STREAMLIT FUNCTIONS---<<<###
-@st.dialog("Settings")
+@st.dialog("Settings", width = "large")
 def settings():
     framework_option = st.selectbox(
         label = "Framework",
@@ -242,12 +242,12 @@ def settings():
                 st.rerun()
 
 
-@st.dialog("Application graph")
+@st.dialog("Application graph", width = "large")
 def view_application_graph(graph):
     st.image(graph.get_graph().draw_mermaid_png())
 
 
-@st.dialog("Application graphs")
+@st.dialog("Application graphs", width = "large")
 def view_application_graphs(graph_dict):
     cols = st.columns(len(graph_dict))
     for i, (key, value) in enumerate(graph_dict.items()):
@@ -255,7 +255,7 @@ def view_application_graphs(graph_dict):
         cols[i].image(value.get_graph().draw_mermaid_png())
 
 
-@st.dialog("Neo4J Context Graph")
+@st.dialog("Neo4J Context Graph", width = "large")
 def view_neo4j_context_graph():
     driver = GraphDatabase.driver(
         os.getenv("NEO4J_URI"), 
