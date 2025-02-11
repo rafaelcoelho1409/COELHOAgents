@@ -18,33 +18,107 @@ if model_temperature_checker == False:
     st.stop()
 
 
-with st.sidebar.form("Project Settings"):
-    max_results = st.number_input(
-        label = "Maximum videos to search",
-        min_value = 1,
-        #max_value = 10,
-        step = 1,
-        value = 1
-    )
-    context_to_search = st.text_area(
-        label = "Context to search",
-        placeholder = "Provide the context to be searched on YouTube",
-    )
-    submit_project_settings = st.form_submit_button(
-        "Set and search",
-        use_container_width = True)
+search_type_filter = st.sidebar.selectbox(
+    label = "Search type",
+    options = [
+        "Search",
+        "Videos", 
+        "Channel", 
+        "Playlist"],
+    index = 0
+)
+
+if search_type_filter == "Search":
+    with st.sidebar.form(f"Project Settings - {search_type_filter}"):
+        context_to_search = st.text_area(
+            label = "Context to search",
+            placeholder = "Provide the context to be searched on YouTube",
+        )
+        max_results = st.number_input(
+            label = "Maximum videos to search",
+            min_value = 1,
+            max_value = 20,
+            step = 1,
+            value = 1
+        )
+        upload_date = st.selectbox(
+            label = "Upload date",
+            options = [
+                None,
+                "Last Hour",
+                "Today",
+                "This Week",
+                "This Month",
+                "This Year"],
+            index = 0
+        )
+        video_type = st.selectbox(
+            label = "Video type",
+            options = [
+                None,
+                "Video",
+                "Channel",
+                "Playlist",
+                "Movie"],
+            index = 0
+        )
+        duration = st.selectbox(
+            label = "Duration",
+            options = [
+                None,
+                "Under 4 minutes",
+                "Over 20 minutes",
+                "4 - 20 minutes"],
+            index = 0
+        )
+        features = st.multiselect(
+            label = "Features",
+            options = [
+                "Live",
+                "4K",
+                "HD",
+                "Subtitles/CC",
+                "Creative Commons",
+                "360",
+                "VR180",
+                "3D",
+                "HDR",
+                "Location",
+                "Purchased"
+            ],
+            default = []
+        )
+        sort_by = st.selectbox(
+            label = "Sort by",
+            options = [
+                None,
+                "Relevance",
+                "Upload Date",
+                "View count",
+                "Rating"],
+            index = 2
+        )
+        submit_project_settings = st.form_submit_button(
+            "Set and search",
+            use_container_width = True)
 if submit_project_settings:
-    st.session_state["max_results"] = max_results
-    st.session_state["context_to_search"] = context_to_search
+    if search_type_filter == "Search":
+        st.session_state["max_results"] = max_results
+        st.session_state["context_to_search"] = context_to_search
     st.session_state["youtube_content_search_agent"] = YouTubeContentSearch(
         st.session_state["framework"],
         st.session_state["temperature_filter"], 
         st.session_state["model_name"],
         st.session_state["shared_memory"]
     )
-    st.session_state["youtube_content_search_agent"].load_model(st.session_state["max_results"])
-    if st.session_state["memory_filter"] == False:
-        st.session_state["shared_memory"] = MemorySaver()
+    st.session_state["youtube_content_search_agent"].load_model(
+        st.session_state["max_results"],
+        search_type_filter,
+        upload_date,
+        video_type,
+        duration,
+        features,
+        sort_by)
     st.session_state["youtube_content_search_agent"].stream_graph_updates(
         context_to_search)
     st.session_state["snapshot"] = st.session_state["youtube_content_search_agent"].graph.get_state(
@@ -123,7 +197,5 @@ for actions in streamlit_actions:
 
 
 if prompt := st.chat_input():
-    if st.session_state["memory_filter"] == False:
-        st.session_state["shared_memory"] = MemorySaver()
     chatbot_agent.stream_graph_updates(
         prompt)
