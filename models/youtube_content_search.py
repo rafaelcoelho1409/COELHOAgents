@@ -2,6 +2,7 @@ import streamlit as st
 import stqdm
 import os
 import uuid
+import re
 import pandas as pd
 from dotenv import load_dotenv
 from typing import List
@@ -317,6 +318,7 @@ class YouTubeContentSearch:
         streamlit_actions = state["streamlit_actions"]
         user_input = state["user_input"]
         streamlit_action = []
+        user_input = re.sub(r'[+\-/!":(){}\[\]\^~]', ' ', user_input)
         youtube_search_query = self.youtube_search_agent.invoke({
             "user_input": user_input
         })

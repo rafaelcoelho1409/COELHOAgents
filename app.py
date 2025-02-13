@@ -4,7 +4,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from functions import (
     settings,
     check_model_and_temperature,
-    reload_active_models,
     initialize_shared_memory
 )
 
@@ -44,18 +43,30 @@ with open("style.css") as css:
 with st.container(key = "app_title"):
     st.title(("$$\\textbf{" + pg.title + "}$$").replace("&", "\&"))
 
-grid_buttons = st.sidebar.columns(2)
-settings_button = grid_buttons[0].button(
-    label = "Settings",
-    use_container_width = True
-)
-if settings_button:
-    settings()
-clear_memory_button = grid_buttons[1].button(
-    label = "Clear memory",
-    use_container_width = True
-)
+if pg.title in [
+    "Home",
+    "Simple Assistant",
+    "Software Developer"]:
+    grid_buttons = st.sidebar.columns(2)
+    settings_button = grid_buttons[0].button(
+        label = "Settings",
+        use_container_width = True
+    )
+    if settings_button:
+        settings()
+    clear_memory_button = grid_buttons[1].button(
+        label = "Clear memory",
+        use_container_width = True
+    )
+else:
+    settings_button = st.sidebar.button(
+        label = "Settings",
+        use_container_width = True
+    )
+    if settings_button:
+        settings()
 st.session_state["view_graph_button_container"] = st.sidebar.container()
+
 
 pg.run()
 
@@ -73,5 +84,8 @@ with st.sidebar.expander("**Informations**", expanded = True):
 
 
 initialize_shared_memory()
-if clear_memory_button:
-    st.session_state["shared_memory"] = MemorySaver()
+try:
+    if clear_memory_button:
+        st.session_state["shared_memory"] = MemorySaver()
+except:
+    pass

@@ -58,16 +58,6 @@ if search_type_filter == "Search":
                 "This Year"],
             index = 0
         )
-        video_type = st.selectbox(
-            label = "Video type",
-            options = [
-                None,
-                "Video",
-                "Channel",
-                "Playlist",
-                "Movie"],
-            index = 0
-        )
         duration = st.selectbox(
             label = "Duration",
             options = [
@@ -186,7 +176,6 @@ if submit_project_settings:
             "max_results": st.session_state["max_results"],
             "search_type": search_type_filter,
             "upload_date": upload_date,
-            "video_type": video_type,
             "duration": duration,
             "features": features,
             "sort_by": sort_by

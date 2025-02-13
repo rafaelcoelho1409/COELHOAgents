@@ -63,11 +63,20 @@ def initialize_shared_memory():
 ###>>>---STREAMLIT FUNCTIONS---<<<###
 @st.dialog("Settings", width = "large")
 def settings():
+    api_keys_dict = {
+        "Groq": "GROQ_API_KEY",
+        "SambaNova": "SAMBANOVA_API_KEY",
+        "Scaleway": (
+            "SCW_GENERATIVE_APIs_ENDPOINT",
+            "SCW_ACCESS_KEY",
+            "SCW_SECRET_KEY"
+        )
+    }
     framework_option = st.selectbox(
         label = "Framework",
         options = [
             "Groq",
-            "Google Generative AI",
+            #"Google Generative AI",
             "Ollama",
             "SambaNova",
             "Scaleway",
@@ -76,25 +85,48 @@ def settings():
     st.session_state["framework"] = framework_option
     provider_model_dict = {
         "Groq": [
+            "gemma2-9b-it",
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
-            "gemma2-9b-it",
+            "llama-guard-3-8b",
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "mixtral-8x7b-32768",
+            "qwen-2.5-32b",
+            "deepseek-r1-distill-qwen-32b",
+            "deepseek-r1-distill-llama-70b-specdec",
+            "deepseek-r1-distill-llama-70b",
+            "llama-3.3-70b-specdec",
+            "llama-3.2-1b-preview",
             "llama-3.2-3b-preview",
-            "mixtral-8x7b-32768"
                 ], 
         "Google Generative AI": [
             "gemini-1.5-pro",
             #"gemini-2.0-flash"
         ],
         "SambaNova": [
-            "Meta-Llama-3.3-70B-Instruct",
+            "DeepSeek-R1",
+            "DeepSeek-R1-Distill-Llama-70B",
+            "Llama-3.1-Tulu-3-405B",
+            "Meta-Llama-3.1-405B-Instruct",
             "Meta-Llama-3.1-70B-Instruct",
+            "Meta-Llama-3.1-8B-Instruct",
+            "Meta-Llama-3.3-70B-Instruct",
+            "Meta-Llama-Guard-3-8B",
             "Qwen2.5-72B-Instruct",
-            "QwQ-32B-Preview",
+            "Qwen2.5-Coder-32B-Instruct",
+            "QwQ-32B-Preview"
         ],
         "Scaleway": [
+            "deepseek-r1",
+            "deepseek-r1-distill-llama-70b",
             "llama-3.3-70b-instruct",
-            "llama-3.1-8b-instruct"
+            "llama-3.1-70b-instruct",
+            "llama-3.1-8b-instruct",
+            "mistral-nemo-instruct-2407",
+            "pixtral-12b-2409",
+            "qwen2.5-coder-32b-instruct",
+            "bge-multilingual-gemma2"
         ]
     }
     if framework_option == "Ollama":
@@ -185,7 +217,7 @@ def settings():
                 st.rerun()
     elif framework_option in [
         "Groq",
-        "Google Generative AI",
+        #"Google Generative AI",
         "SambaNova",
         "Scaleway"
     ]:
@@ -200,6 +232,69 @@ def settings():
                 value = 0.00,
                 step = 0.01
             )
+            if st.session_state["framework"] in [
+                "Groq",
+                #"Google Generative AI",
+                "SambaNova"
+            ]:
+                try: #AUTOFILL API KEYS, IF EXISTS
+                    globals()[api_keys_dict[st.session_state["framework"]]] = st.text_input(
+                        label = api_keys_dict[st.session_state["framework"]],
+                        value = os.getenv(api_keys_dict[st.session_state["framework"]]),
+                        placeholder = "Provide the API key",
+                        type = "password"
+                    )
+                    os.environ[api_keys_dict[st.session_state["framework"]]] = globals()[api_keys_dict[st.session_state["framework"]]]
+                except:
+                    globals()[api_keys_dict[st.session_state["framework"]]] = st.text_input(
+                        label = api_keys_dict[st.session_state["framework"]],
+                        #value = os.getenv(api_keys_dict[st.session_state["framework"]])
+                        placeholder = "Provide the API key",
+                        type = "password"
+                    )
+                    os.environ[api_keys_dict[st.session_state["framework"]]] = globals()[api_keys_dict[st.session_state["framework"]]]
+            elif st.session_state["framework"] == "Scaleway":
+                try:
+                    SCW_GENERATIVE_APIs_ENDPOINT = st.text_input(
+                        label = "SCW_GENERATIVE_APIs_ENDPOINT",
+                        value = os.getenv("SCW_GENERATIVE_APIs_ENDPOINT"),
+                        placeholder = "Provide the API endpoint",
+                        type = "password"
+                    )
+                    SCW_ACCESS_KEY = st.text_input(
+                        label = "SCW_ACCESS_KEY",
+                        value = os.getenv("SCW_ACCESS_KEY"),
+                        placeholder = "Provide the access key",
+                        type = "password"
+                    )
+                    SCW_SECRET_KEY = st.text_input(
+                        label = "SCW_SECRET_KEY",
+                        value = os.getenv("SCW_SECRET_KEY"),
+                        placeholder = "Provide the secret key",
+                        type = "password"
+                    )
+                    os.environ["SCW_GENERATIVE_APIs_ENDPOINT"] = SCW_GENERATIVE_APIs_ENDPOINT
+                    os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
+                    os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
+                except:
+                    SCW_GENERATIVE_APIs_ENDPOINT = st.text_input(
+                        label = "SCW_GENERATIVE_APIs_ENDPOINT",
+                        placeholder = "Provide the API endpoint",
+                        type = "password"
+                    )
+                    SCW_ACCESS_KEY = st.text_input(
+                        label = "SCW_ACCESS_KEY",
+                        placeholder = "Provide the access key",
+                        type = "password"
+                    )
+                    SCW_SECRET_KEY = st.text_input(
+                        label = "SCW_SECRET_KEY",
+                        placeholder = "Provide the secret key",
+                        type = "password"
+                    )
+                    os.environ["SCW_GENERATIVE_APIs_ENDPOINT"] = SCW_GENERATIVE_APIs_ENDPOINT
+                    os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
+                    os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
             toggle_filters = st.columns(3)
             try:
                 memory_filter = toggle_filters[0].toggle(
@@ -240,6 +335,7 @@ def settings():
                 st.session_state["vector_database_filter"] = vector_database_filter
                 st.session_state["rag_filter"] = rag_filter
                 st.rerun()
+            
 
 
 @st.dialog("Application graph", width = "large")
