@@ -72,7 +72,8 @@ pg.run()
 
 model_temperature_checker = check_model_and_temperature()
 if model_temperature_checker == False:
-    st.info("Choose model and temperature to start running COELHO GenAI models.")
+    if pg.title != "Home":
+        st.info("Choose model and temperature to start running COELHO Agents models.")
     st.stop()
 
 
