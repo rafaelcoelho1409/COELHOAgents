@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from typing import Annotated
 from typing_extensions import TypedDict
 from langchain_community.chat_models.sambanova import ChatSambaNovaCloud
+from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -58,7 +59,8 @@ class SimpleAssistant:
             "Ollama": ChatOllama,
             "Google Generative AI": ChatGoogleGenerativeAI,
             "SambaNova": ChatSambaNovaCloud,
-            "Scaleway": ChatOpenAI
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
         self.llm_model = self.llm_framework[framework]
         if framework == "Scaleway":

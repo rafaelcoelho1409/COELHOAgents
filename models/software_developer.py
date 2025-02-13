@@ -107,7 +107,8 @@ class SoftwareDeveloper:
             "Ollama": ChatOllama,
             "Google Generative AI": ChatGoogleGenerativeAI,
             "SambaNova": ChatSambaNovaCloud,
-            "Scaleway": ChatOpenAI
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI,
         }
         self.llm_model = self.llm_framework[framework]
         if framework == "Scaleway":

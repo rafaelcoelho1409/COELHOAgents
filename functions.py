@@ -70,7 +70,8 @@ def settings():
             "SCW_GENERATIVE_APIs_ENDPOINT",
             "SCW_ACCESS_KEY",
             "SCW_SECRET_KEY"
-        )
+        ),
+        "OpenAI": "OPENAI_API_KEY"
     }
     framework_option = st.selectbox(
         label = "Framework",
@@ -80,6 +81,7 @@ def settings():
             "Ollama",
             "SambaNova",
             "Scaleway",
+            "OpenAI"
         ]
     )
     st.session_state["framework"] = framework_option
@@ -127,6 +129,15 @@ def settings():
             "pixtral-12b-2409",
             "qwen2.5-coder-32b-instruct",
             "bge-multilingual-gemma2"
+        ],
+        "OpenAI": [
+            "gpt-4o",
+            "chatgpt-4o-latest",
+            "gpt-4o-mini",
+            "o1",
+            "o1-mini",
+            "o3-mini",
+            "o1-preview"
         ]
     }
     if framework_option == "Ollama":
@@ -219,7 +230,8 @@ def settings():
         "Groq",
         #"Google Generative AI",
         "SambaNova",
-        "Scaleway"
+        "Scaleway",
+        "OpenAI"
     ]:
         with st.form(f"Settings {framework_option}"):
             models_option = st.selectbox(
@@ -235,7 +247,8 @@ def settings():
             if st.session_state["framework"] in [
                 "Groq",
                 #"Google Generative AI",
-                "SambaNova"
+                "SambaNova",
+                "OpenAI"
             ]:
                 try: #AUTOFILL API KEYS, IF EXISTS
                     globals()[api_keys_dict[st.session_state["framework"]]] = st.text_input(
