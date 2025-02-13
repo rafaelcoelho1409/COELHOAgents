@@ -71,10 +71,16 @@ class SimpleAssistant:
                 temperature =  temperature_filter
             )
         else:
-            self.llm = self.llm_model(
-                model = model_name,
-                temperature = temperature_filter,
-            )
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
         self.tool = DuckDuckGoSearchResults(output_format = "list")
         self.tools = [self.tool]
         self.llm_with_tools = self.llm.bind_tools(self.tools)

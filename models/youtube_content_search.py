@@ -97,10 +97,16 @@ class YouTubeContentSearch:
                 temperature =  temperature_filter
             )
         else:
-            self.llm = self.llm_model(
-                model = model_name,
-                temperature = temperature_filter,
-            )
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
 
     def load_model(
             self, 
@@ -656,7 +662,8 @@ class YouTubeChatbot:
             "Ollama": ChatOllama,
             "Google Generative AI": ChatGoogleGenerativeAI,
             "SambaNova": ChatSambaNovaCloud,
-            "Scaleway": ChatOpenAI
+            "Scaleway": ChatOpenAI,
+            "OpenAI": ChatOpenAI
         }
         self.llm_model = self.llm_framework[framework]
         if framework == "Scaleway":
@@ -667,10 +674,16 @@ class YouTubeChatbot:
                 temperature =  temperature_filter
             )
         else:
-            self.llm = self.llm_model(
-                model = model_name,
-                temperature = temperature_filter,
-            )
+            try:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    temperature = temperature_filter,
+                )
+            except:
+                self.llm = self.llm_model(
+                    model = model_name,
+                    #temperature = temperature_filter,
+                )
 
     def load_model(self, rag_chain):
         ###GRAPH
@@ -746,4 +759,3 @@ class YouTubeChatbot:
                         )(
                             **action[1]
                         )
-
