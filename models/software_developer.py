@@ -39,11 +39,11 @@ class CodeGeneration(BaseModel):
         Name of the project""")
     prefix: str = Field(description = """
         Description of the problem and approach""")
-    filenames: List = Field(description = """
+    filenames: List[str] = Field(description = """
         File names for this code solution. 
         Can be one or more files.
         Names must be into a list of strings.""")
-    codes: List = Field(description = """
+    codes: List[str] = Field(description = """
         Code block statements for each file to be created in the project. 
         Can be one or more code files, according to the file names.
         Codes must be into a list of strings.""" 
@@ -139,26 +139,24 @@ class SoftwareDeveloper:
         self.code_runner_correct_chain = self.build_code_runner_correct_search()
         # Max tries
         self.max_iterations = 3
-        # Reflect
-        # flag = 'reflect'
-        self.flag = "do not reflect"
         self.workflow = StateGraph(State)
         ###NODES
         self.workflow.add_node("check_install", self.check_install)
         self.workflow.add_node("generate_code", self.generate_code)
-        self.workflow.add_node("check_dependencies", self.check_dependencies)
-        self.workflow.add_node("run_code", self.run_code)
+        #self.workflow.add_node("check_dependencies", self.check_dependencies)
+        #self.workflow.add_node("run_code", self.run_code)
         #self.workflow.add_node("correct_run_code_search_term", self.correct_run_code_search_term)
         #self.workflow.add_node("correct_run_code_search_results", self.correct_run_code_search_results)
         ###EDGES
         self.workflow.add_edge(START, "check_install")
         self.workflow.add_conditional_edges("check_install", self.check_install_error)
-        self.workflow.add_edge("generate_code", "check_dependencies")
-        self.workflow.add_edge("check_dependencies", "run_code")
+        self.workflow.add_edge("generate_code", END)
+        #self.workflow.add_edge("generate_code", "check_dependencies")
+        #self.workflow.add_edge("check_dependencies", "run_code")
         #self.workflow.add_conditional_edges("run_code", self.search_error_online)
         #self.workflow.add_edge("correct_run_code_search_term", "correct_run_code_search_results")
         #self.workflow.add_edge("correct_run_code_search_results", END)
-        self.workflow.add_edge("run_code", END)
+        #self.workflow.add_edge("run_code", END)
         #self.workflow.add_edge("check_install", END)
         #self.workflow.add_edge("check_dependencies", END)
         self.graph = self.workflow.compile(
