@@ -355,7 +355,7 @@ def settings():
 
 @st.dialog("Application graph", width = "large")
 def view_application_graph(graph):
-    st.image(graph.get_graph().draw_mermaid_png())
+    st.image(graph.get_graph(xray = True).draw_mermaid_png())
 
 
 @st.dialog("Application graphs", width = "large")
@@ -363,7 +363,7 @@ def view_application_graphs(graph_dict):
     cols = st.columns(len(graph_dict))
     for i, (key, value) in enumerate(graph_dict.items()):
         cols[i].header(key)
-        cols[i].image(value.get_graph().draw_mermaid_png())
+        cols[i].image(value.get_graph(xray = True).draw_mermaid_png())
 
 
 @st.dialog("Neo4J Context Graph", width = "large")

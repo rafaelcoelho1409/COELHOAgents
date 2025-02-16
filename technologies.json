@@ -1,5 +1,6 @@
 {
     "Python": "python3 --version",
+    "Python & UV": "uv pip list",
     "Java": "java -version",
     "Go": "go version",
     "C++": "g++ --version",
