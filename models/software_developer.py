@@ -166,9 +166,7 @@ class SoftwareDeveloper:
         self.workflow.add_node("run_dependencies", self.run_dependencies)
         self.workflow.add_node("fix_error_dependencies", self.fix_error_dependencies)
         self.workflow.add_node("run_code", self.run_code)
-        #self.workflow.add_node("fix_code_type", self.fix_code_type)
         self.workflow.add_node("fix_code", self.fix_code)
-        #self.workflow.add_node("correct_run_code_search_results", self.correct_run_code_search_results)
         ###EDGES
         self.workflow.add_edge(START, "check_install")
         self.workflow.add_conditional_edges("check_install", self.check_install_error)
@@ -178,10 +176,6 @@ class SoftwareDeveloper:
         self.workflow.add_conditional_edges("fix_error_dependencies", self.from_fix_dependencies_to_run_code)
         self.workflow.add_conditional_edges("run_code", self.fix_code_conditional)
         self.workflow.add_edge("fix_code", "run_code")
-        #self.workflow.add_edge("run_dependencies", END)
-        #self.workflow.add_edge("check_dependencies", "run_code")
-        #self.workflow.add_conditional_edges("run_code", self.search_error_online)
-        #self.workflow.add_edge("run_code", END)
         self.graph = self.workflow.compile(
             checkpointer = st.session_state["shared_memory"]#self.shared_memory
         )
@@ -295,7 +289,7 @@ class SoftwareDeveloper:
                        - Use the standard format for the specified technology.\n
                     """,
                 ),
-                ("placeholder", "{messages}"),
+                #("placeholder", "{messages}"),
             ]
         )
         code_runner_chain = code_runner_prompt | self.llm.with_structured_output(
@@ -322,7 +316,7 @@ class SoftwareDeveloper:
                     1. Define the error type: dependencies or code.\n
                     """,
                 ),
-                ("placeholder", "{messages}"),
+                #("placeholder", "{messages}"),
             ]
         )
         fix_code_chain = fix_code_prompt | self.llm.with_structured_output(
@@ -352,7 +346,7 @@ class SoftwareDeveloper:
                     2. Return the list of code(s) to be fixed.\n
                     """,
                 ),
-                ("placeholder", "{messages}"),
+                #("placeholder", "{messages}"),
             ]
         )
         fix_code_chain = fix_code_prompt | self.llm.with_structured_output(
@@ -791,7 +785,7 @@ class SoftwareDeveloper:
             streamlit_action += [(
                 "info",
                 {"body": messages[-1][1]},
-                ("Error trying to fix dependencies install", True),
+                ("Error trying to fix codes", True),
                 messages[-1][0],
             )]
         streamlit_actions += [streamlit_action]
@@ -800,7 +794,8 @@ class SoftwareDeveloper:
             "streamlit_actions": streamlit_actions,
             "error": error,
             "command": updated_command,
-            "error_message": error_message
+            "error_message": error_message,
+            "fix_code_iterations": fix_code_iterations
             }
     
     def fix_code_conditional(self, state: State):
@@ -823,22 +818,6 @@ class SoftwareDeveloper:
                 return "fix_code"
         else:
             return END
-    
-    #def fix_code_type(self, state: State): 
-    #    print("Node: fix_code_type") 
-    #    messages = state["messages"]
-    #    command = state["command"]
-    #    error_message = state["error_message"]
-    #    fix_type = self.fix_code_type_chain.invoke({
-    #        "technology": self.technology,
-    #        "messages": messages,
-    #        "command": command,
-    #        "command_error": error_message
-    #    })
-    #    if fix_type.fix_type == "dependencies":
-    #        return "fix_error_dependencies"
-    #    elif fix_type.fix_type == "code":
-    #        return "fix_code"
         
 
     def fix_code(self, state: State):
