@@ -4,7 +4,7 @@ import os
 import json
 import stqdm
 from dotenv import load_dotenv
-from typing import List, Annotated
+from typing import List, Annotated, Literal
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
@@ -71,6 +71,17 @@ class CodeError(BaseModel):
     error_message: str = Field(description = """
         Summarized error message in only one row, to be searched on StackOverflow API.""" 
         )
+    
+
+class FixType(BaseModel):
+    fix_type: Literal["dependencies", "code"] = Field(description = """
+        Type of error to fix. Can be dependencies or code.""")
+
+class FixCode(BaseModel):
+    filename: List[str] = Field(description = """
+        Name of the file(s) to be fixed.""")
+    codes: List[str] = Field(description = """
+        Code block(s) to be fixed. Must match with each file name""")
 
 
 class State(TypedDict):
@@ -143,7 +154,8 @@ class SoftwareDeveloper:
         self.code_runner_chain = self.build_code_runner()
         self.dep_checker_chain = self.build_dependencies_checker()
         self.fix_error_dependencies_chain = self.build_fix_error_dependencies_chain()
-        self.code_runner_correct_chain = self.build_code_runner_correct_search()
+        self.fix_code_type_chain = self.build_fix_code_type_chain()
+        self.fix_code_chain = self.build_fix_code_chain()
         # Max tries
         self.max_iterations = 3
         self.workflow = StateGraph(State)
@@ -155,7 +167,6 @@ class SoftwareDeveloper:
         self.workflow.add_node("fix_error_dependencies", self.fix_error_dependencies)
         self.workflow.add_node("run_code", self.run_code)
         self.workflow.add_node("fix_code", self.fix_code)
-        #self.workflow.add_node("correct_run_code_search_term", self.correct_run_code_search_term)
         #self.workflow.add_node("correct_run_code_search_results", self.correct_run_code_search_results)
         ###EDGES
         self.workflow.add_edge(START, "check_install")
@@ -164,12 +175,12 @@ class SoftwareDeveloper:
         self.workflow.add_edge("check_dependencies", "run_dependencies")
         self.workflow.add_conditional_edges("run_dependencies", self.fix_error_dependencies_conditional)
         self.workflow.add_conditional_edges("fix_error_dependencies", self.from_fix_dependencies_to_run_code)
-        self.workflow.add_conditional_edges("run_code", self.fix_code_conditional)
+        self.workflow.add_conditional_edges("run_code", self.fix_code_type)
+        self.workflow.add_edge("fix_code", "run_code")
         #self.workflow.add_edge("run_dependencies", END)
         #self.workflow.add_edge("check_dependencies", "run_code")
         #self.workflow.add_conditional_edges("run_code", self.search_error_online)
         #self.workflow.add_edge("run_code", END)
-        self.workflow.add_edge("fix_code", END)
         self.graph = self.workflow.compile(
             checkpointer = st.session_state["shared_memory"]#self.shared_memory
         )
@@ -275,6 +286,7 @@ class SoftwareDeveloper:
                     with all required imports and variables defined. \n
                     Based on the following file names:\n\n
                     {filenames}\n\n
+                    And based on the code executed below:\n\n
                     {code}\n\n 
                     Your task is to:\n
                     1. Generate the terminal commands to run the main file(s). The commands should:\n
@@ -290,8 +302,8 @@ class SoftwareDeveloper:
         )
         return code_runner_chain
     
-    def build_code_runner_correct_search(self):
-        code_runner_correct_search_prompt = ChatPromptTemplate.from_messages(
+    def build_fix_code_type_chain(self):
+        fix_code_prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
@@ -306,21 +318,51 @@ class SoftwareDeveloper:
                     And based on the error after the code execution:\n\n
                     {command_error}\n\n 
                     Your task is to:\n
-                    1. Summarize the error message in only one row, 
-                    to be searched on StackOverflow in its most optimized way.\n
+                    1. Define the error type: dependencies or code.\n
                     """,
                 ),
                 ("placeholder", "{messages}"),
             ]
         )
-        #stack_api = StackExchangeAPIWrapper()
-        code_runner_correct_chain = code_runner_correct_search_prompt | self.llm.with_structured_output(
-            CodeBlock,
+        fix_code_chain = fix_code_prompt | self.llm.with_structured_output(
+            FixType
         )
-        return code_runner_correct_chain
+        return fix_code_chain
     
-    ###Nodes
+
+    def build_fix_code_chain(self):
+        fix_code_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    """
+                    You are a coding assistant with expertise in the following language:  
+                    \n ------- \n  {technology} \n ------- \n 
+                    Ensure any code you provide can be executed 
+                    with all required imports and variables defined. \n
+                    Based on the following file names:\n\n
+                    {filenames}\n\n
+                    And based on the codes generated below:\n\n
+                    {codes}\n\n 
+                    And based on the error after the code execution:\n\n
+                    {error_message}\n\n
+                    Your task is to:\n
+                    1. Return the list of file name(s) to be fixed.\n
+                    2. Return the list of code(s) to be fixed.\n
+                    """,
+                ),
+                ("placeholder", "{messages}"),
+            ]
+        )
+        fix_code_chain = fix_code_prompt | self.llm.with_structured_output(
+            FixCode,
+        )
+        return fix_code_chain
+    
+    
+    ###NODES###
     def check_install(self, state: State):
+        print("Node: check_install")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         error = state["error"]
@@ -358,6 +400,7 @@ class SoftwareDeveloper:
             "error": error}
 
     def check_install_error(self, state: State):
+        print("Node: check_install_error")
         error = state["error"]
         if error == "yes":
             return END
@@ -365,7 +408,7 @@ class SoftwareDeveloper:
             return "generate_code"
 
     def generate_code(self, state: State):
-        #st.chat_message("Tool").info("GENERATING CODE SOLUTION")
+        print("Node: generate_code")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         error = state["error"]
@@ -399,11 +442,11 @@ class SoftwareDeveloper:
                 code_solution.project_name), 
                 exist_ok = True
                 )
-        for filename, imports, code in zip(code_solution.filenames, code_solution.imports, code_solution.codes):
+        for filename, code in zip(code_solution.filenames, code_solution.codes):
             with open(self.project_folder / os.path.join(
                 code_solution.project_name, 
                 filename), "w") as file:
-                file.write(imports + "\n\n" + code)
+                file.write(code)
         #------------
         messages += [
             (
@@ -458,6 +501,7 @@ class SoftwareDeveloper:
         }
     
     def check_dependencies(self, state: State):
+        print("Node: check_dependencies")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         code_solution = state["generation"]
@@ -488,6 +532,7 @@ class SoftwareDeveloper:
             "dependencies": dependencies_commands}
     
     def run_dependencies(self, state: State):
+        print("Node: run_dependencies")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         dependencies = state["dependencies"]
@@ -544,6 +589,7 @@ class SoftwareDeveloper:
         }
     
     def fix_error_dependencies_conditional(self, state: State):
+        print("Node: fix_error_dependencies_conditional")
         error = state["error"]
         if error == "yes":
             return "fix_error_dependencies"
@@ -552,6 +598,7 @@ class SoftwareDeveloper:
         
 
     def fix_error_dependencies(self, state: State):
+        print("Node: fix_error_dependencies")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         error_message = state["error_message"]
@@ -640,6 +687,7 @@ class SoftwareDeveloper:
         }
     
     def from_fix_dependencies_to_run_code(self, state: State):
+        print("Node: from_fix_dependencies_to_run_code")
         error = state["error"]
         fix_dependencies_iterations = state["fix_dependencies_iterations"]
         if error == "yes" and fix_dependencies_iterations < 3:
@@ -650,6 +698,7 @@ class SoftwareDeveloper:
             return "run_code"
     
     def run_code(self, state: State):
+        print("Node: run_code")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         code_solution = state["generation"]
@@ -733,26 +782,75 @@ class SoftwareDeveloper:
             }
     
     def fix_code_conditional(self, state: State):
+        print("Node: fix_code_conditional")
         error = state["error"]
         if error == "yes":
-            return "fix_code"
+            return "fix_code_type"
         else:
             return END
     
-    def fix_code(self, state: State):  
+    def fix_code_type(self, state: State): 
+        print("Node: fix_code_type") 
         messages = state["messages"]
-        streamlit_actions = state["streamlit_actions"]
         command = state["command"]
         error_message = state["error_message"]
-        filenames = state["filenames"]
+        fix_type = self.fix_code_type_chain.invoke({
+            "technology": self.technology,
+            "messages": messages,
+            "command": command,
+            "command_error": error_message
+        })
+        if fix_type.fix_type == "dependencies":
+            return "fix_error_dependencies"
+        elif fix_type.fix_type == "code":
+            return "fix_code"
+        
+
+    def fix_code(self, state: State):
+        print("Node: fix_code")
+        messages = state["messages"]
+        streamlit_actions = state["streamlit_actions"]
+        fix_code_iterations = state["fix_code_iterations"]
+        filenames = state["generation"].filenames
+        codes = state["generation"].codes
+        error_message = state["error_message"]
         project_name = state["project_name"]
         streamlit_action = []
-    #    error_search_term = self.code_runner_correct_chain.invoke({
-    #        "technology": technology,
-    #        "messages": messages,
-    #        "command": command,
-    #        "command_error": command_error
-    #    })
+        fix_code_results = self.fix_code_chain.invoke({
+            "technology": self.technology,
+            "messages": messages,
+            "filenames": filenames,
+            "codes": codes,
+            "error_message": error_message
+        })
+        for filename, code in zip(fix_code_results.filenames, fix_code_results.codes):
+            messages += [
+                (
+                    "assistant",
+                    f"""
+                    **Codes:**\n```{self.technology.lower()}\n\n{code}\n\n```\n
+                    """
+                )
+            ]
+            streamlit_action += [(
+                "markdown", 
+                {"body": messages[-1][1]},
+                (filename, True),
+                messages[-1][0],
+                )]
+            with open(self.project_folder / os.path.join(
+                project_name, 
+                filename), "w") as file:
+                file.write(code)
+        streamlit_actions += [streamlit_action]
+        return {
+            "messages": messages,
+            "streamlit_actions": streamlit_actions,
+        }
+
+
+
+
     #    messages += [
     #        (
     #            "assistant",
@@ -775,37 +873,6 @@ class SoftwareDeveloper:
     #        "error_search_term": error_search_term,
     #        }
     
-    #def correct_run_code_search_results(self, state: State):
-    #    messages = state["messages"]
-    #    streamlit_actions = state["streamlit_actions"]
-    #    error_search_term = state["error_search_term"]
-    #    iterations_search = state["iterations_search"]
-    #    streamlit_action = []
-    #    stackexchange = StackExchangeAPIWrapper()
-    #    search_results = stackexchange.run(error_search_term)
-    #    messages += [
-    #        (
-    #            "assistant",
-    #            f"""
-    #            Results about the error on StackExchange API:\n
-    #            {search_results}
-    #            """
-    #        )
-    #    ]
-    #    streamlit_action += [(
-    #        "success", 
-    #        {"body": messages[-1][1]},
-    #        ("Search error online - results", True),
-    #        messages[-1][0],
-    #        )]
-    #    streamlit_actions += [streamlit_action]
-    #    iterations_search += 1
-    #    return {
-    #        "messages": messages,
-    #        "streamlit_actions": streamlit_actions,
-    #        "error_search_term": error_search_term,
-    #        "iterations_search": iterations_search
-    #        }
 
 
     def stream_graph_updates(self, technology, project_name, user_input):
