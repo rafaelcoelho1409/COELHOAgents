@@ -166,6 +166,7 @@ class SoftwareDeveloper:
         self.workflow.add_node("run_dependencies", self.run_dependencies)
         self.workflow.add_node("fix_error_dependencies", self.fix_error_dependencies)
         self.workflow.add_node("run_code", self.run_code)
+        #self.workflow.add_node("fix_code_type", self.fix_code_type)
         self.workflow.add_node("fix_code", self.fix_code)
         #self.workflow.add_node("correct_run_code_search_results", self.correct_run_code_search_results)
         ###EDGES
@@ -175,7 +176,7 @@ class SoftwareDeveloper:
         self.workflow.add_edge("check_dependencies", "run_dependencies")
         self.workflow.add_conditional_edges("run_dependencies", self.fix_error_dependencies_conditional)
         self.workflow.add_conditional_edges("fix_error_dependencies", self.from_fix_dependencies_to_run_code)
-        self.workflow.add_conditional_edges("run_code", self.fix_code_type)
+        self.workflow.add_conditional_edges("run_code", self.fix_code_conditional)
         self.workflow.add_edge("fix_code", "run_code")
         #self.workflow.add_edge("run_dependencies", END)
         #self.workflow.add_edge("check_dependencies", "run_code")
@@ -536,7 +537,6 @@ class SoftwareDeveloper:
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         dependencies = state["dependencies"]
-        fix_dependencies_iterations = state["fix_dependencies_iterations"]
         streamlit_action = []
         command_status = subprocess.run(
             dependencies,
@@ -605,6 +605,7 @@ class SoftwareDeveloper:
         fix_dependencies_iterations = state["fix_dependencies_iterations"]
         streamlit_action = []
         #------------------------------------------------------------------------------
+        print(f"fix_dependencies_iterations: {fix_dependencies_iterations}")
         command_result = self.fix_error_dependencies_chain.invoke({
             "technology": self.technology,
             "error_message": error_message
@@ -618,7 +619,7 @@ class SoftwareDeveloper:
         streamlit_action += [(
             "code", 
             {"body": messages[-1][1]},
-            (f"Dependencies command to be run - attempt {fix_dependencies_iterations + 1}", True),
+            (f"Dependencies command fix to be run - attempt {fix_dependencies_iterations + 1}", True),
             messages[-1][0],
         )]
         command_status = subprocess.run(
@@ -701,19 +702,27 @@ class SoftwareDeveloper:
         print("Node: run_code")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
-        code_solution = state["generation"]
+        fix_code_iterations = state["fix_code_iterations"]
         error = state["error"]
         project_name = state["project_name"]
         streamlit_action = []
+        #------------------------------------------------------------------------------
+        print(f"fix_code_iterations: {fix_code_iterations}")
+        code_solution = {}
+        code_solution["filenames"] = os.listdir(str(self.project_folder / project_name))
+        code_solution["codes"] = [
+            open(str(self.project_folder / os.path.join(project_name, x)), "r").read() 
+            for x 
+            in code_solution["filenames"]]
         code_runner = self.code_runner_chain.invoke({
             "technology": self.technology,
             "messages": messages,
-            "filenames": code_solution.filenames,
-            "code": code_solution.codes,
+            "filenames": code_solution["filenames"],
+            "code": code_solution["codes"],
         })
         original_command = code_runner.code
         def replace_path_on_command(_term):
-            if _term in code_solution.filenames:
+            if _term in code_solution["filenames"]:
                 return str(self.project_folder / os.path.join(project_name, _term))
             return _term
         updated_command = " ".join([replace_path_on_command(x) for x in original_command.split()])
@@ -771,7 +780,20 @@ class SoftwareDeveloper:
                 )]
             error = "yes"
             error_message = command_status.stderr.replace(str(self.project_folder / project_name), "[REDACTED]")
-            print(error_message)
+            fix_code_iterations += 1
+        if fix_code_iterations >= 3:
+            messages += [
+                (
+                    "assistant",
+                    "The maximum number of attempts to fix codes was reached. The execution is going to be stopped."
+                )
+            ]
+            streamlit_action += [(
+                "info",
+                {"body": messages[-1][1]},
+                ("Error trying to fix dependencies install", True),
+                messages[-1][0],
+            )]
         streamlit_actions += [streamlit_action]
         return {
             "messages": messages,
@@ -783,47 +805,65 @@ class SoftwareDeveloper:
     
     def fix_code_conditional(self, state: State):
         print("Node: fix_code_conditional")
-        error = state["error"]
-        if error == "yes":
-            return "fix_code_type"
-        else:
-            return END
-    
-    def fix_code_type(self, state: State): 
-        print("Node: fix_code_type") 
         messages = state["messages"]
         command = state["command"]
         error_message = state["error_message"]
+        error = state["error"]
+        fix_code_iterations = state["fix_code_iterations"]
         fix_type = self.fix_code_type_chain.invoke({
             "technology": self.technology,
             "messages": messages,
             "command": command,
             "command_error": error_message
         })
-        if fix_type.fix_type == "dependencies":
-            return "fix_error_dependencies"
-        elif fix_type.fix_type == "code":
-            return "fix_code"
+        if error == "yes" and fix_code_iterations < 3:
+            if fix_type.fix_type == "dependencies":
+                return "fix_error_dependencies"
+            elif fix_type.fix_type == "code":
+                return "fix_code"
+        else:
+            return END
+    
+    #def fix_code_type(self, state: State): 
+    #    print("Node: fix_code_type") 
+    #    messages = state["messages"]
+    #    command = state["command"]
+    #    error_message = state["error_message"]
+    #    fix_type = self.fix_code_type_chain.invoke({
+    #        "technology": self.technology,
+    #        "messages": messages,
+    #        "command": command,
+    #        "command_error": error_message
+    #    })
+    #    if fix_type.fix_type == "dependencies":
+    #        return "fix_error_dependencies"
+    #    elif fix_type.fix_type == "code":
+    #        return "fix_code"
         
 
     def fix_code(self, state: State):
         print("Node: fix_code")
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
-        fix_code_iterations = state["fix_code_iterations"]
-        filenames = state["generation"].filenames
-        codes = state["generation"].codes
+        #filenames = state["generation"].filenames
+        #codes = state["generation"].codes
         error_message = state["error_message"]
         project_name = state["project_name"]
         streamlit_action = []
+        code_solution = {}
+        code_solution["filenames"] = os.listdir(str(self.project_folder / project_name))
+        code_solution["codes"] = [
+            open(str(self.project_folder / os.path.join(project_name, x)), "r").read() 
+            for x 
+            in code_solution["filenames"]]
         fix_code_results = self.fix_code_chain.invoke({
             "technology": self.technology,
             "messages": messages,
-            "filenames": filenames,
-            "codes": codes,
+            "filenames": code_solution["filenames"],
+            "codes": code_solution["codes"],
             "error_message": error_message
         })
-        for filename, code in zip(fix_code_results.filenames, fix_code_results.codes):
+        for filename, code in zip(code_solution["filenames"], code_solution["codes"]):
             messages += [
                 (
                     "assistant",
@@ -847,32 +887,6 @@ class SoftwareDeveloper:
             "messages": messages,
             "streamlit_actions": streamlit_actions,
         }
-
-
-
-
-    #    messages += [
-    #        (
-    #            "assistant",
-    #            f"""
-    #            Term to be searched on StackExchange API:\n
-    #            {error_search_term}
-    #            """
-    #        )
-    #    ]
-    #    streamlit_action += [(
-    #        "info", 
-    #        {"body": messages[-1][1]},
-    #        ("Search error online", True),
-    #        messages[-1][0],
-    #        )]
-    #    streamlit_actions += [streamlit_action]
-    #    return {
-    #        "messages": messages,
-    #        "streamlit_actions": streamlit_actions,
-    #        "error_search_term": error_search_term,
-    #        }
-    
 
 
     def stream_graph_updates(self, technology, project_name, user_input):
