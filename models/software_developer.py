@@ -18,6 +18,7 @@ from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
+from langgraph.checkpoint.memory import MemorySaver
 
 load_dotenv()
 
@@ -39,21 +40,24 @@ class CodeGeneration(BaseModel):
     project_name: str = Field(description = """
         Name of the project""")
     prefix: str = Field(description = """
-        Description of the problem and approach""")
+        Description of the problem and approach"""
+        )
     filenames: List[str] = Field(description = """
-        File names for this code solution. 
-        Can be one or more files.
-        Names must be into a list of strings.""")
+        File name for this code solution.
+        Can be only one file."""
+        #Names must be into a list of strings."""
+        )
     imports: List[str] = Field(description = """
         Code block import statements for each file to be created in the project,
-        excluding the rest of the code that are not the import statements. 
-        Can be one or more code files, according to the file names.
-        Code imports must be into a list of strings.""")
+        Can be only one code file, according to the file name."""
+        #excluding the rest of the code that are not the import statements.
+        #Code imports must be into a list of strings."""
+        )
     codes: List[str] = Field(description = """
         Code block statements for each file to be created in the project,
-        without the code block import statements. 
-        Can be one or more code files, according to the file names.
-        Codes must be into a list of strings.""" 
+        Can be only one code file, according to the file name."""
+        #without the code block import statements.
+        #Codes must be into a list of strings.""" 
         )
 
 
@@ -177,7 +181,7 @@ class SoftwareDeveloper:
         self.workflow.add_conditional_edges("run_code", self.fix_code_conditional)
         self.workflow.add_edge("fix_code", "run_code")
         self.graph = self.workflow.compile(
-            checkpointer = st.session_state["shared_memory"]#self.shared_memory
+            checkpointer = MemorySaver()#self.shared_memory#st.session_state["shared_memory"]
         )
 
     def build_code_generator(self):
@@ -217,7 +221,7 @@ class SoftwareDeveloper:
                     "system",
                     """
                     ### Instructions about dependencies install ###\n
-                    You are a coding assistant with expertise in the following language:\n
+                    You are a coding assistant specialist with expertise in the following language:\n
                     **{technology}**\n
                     \n
                     Based on the generated code imports below:\n\n
@@ -232,6 +236,7 @@ class SoftwareDeveloper:
                        - Use the standard format for the specified technology.\n
                     4. It must be in a raw text row format.\n
                     5. Any command piece involving something like sudo must be dropped to not stop the execution.\n
+                    VERY IMPORTANT: if there are no dependencies commands to be executed, then leave this field empty.\n
                     """
                     #2. Provide these dependencies in the format of a `requirements` file, which lists each dependency on a new line.\n
                 ),
@@ -249,7 +254,7 @@ class SoftwareDeveloper:
                 (
                     "system",
                     """
-                    You are a coding assistant with expertise in the following language:
+                    You are a coding assistant specialist with expertise in the following language:
                     \n ------- \n  {technology} \n ------- \n
                     Based on the following error message:\n\n
                     {error_message}
@@ -274,7 +279,7 @@ class SoftwareDeveloper:
                 (
                     "system",
                     """
-                    You are a coding assistant with expertise in the following language:  
+                    You are a coding assistant specialist with expertise in the following language:
                     \n ------- \n  {technology} \n ------- \n 
                     Answer the user question based on the programming language. \n
                     Ensure any code you provide can be executed 
@@ -289,7 +294,7 @@ class SoftwareDeveloper:
                        - Use the standard format for the specified technology.\n
                     """,
                 ),
-                #("placeholder", "{messages}"),
+                ("placeholder", "{messages}"),
             ]
         )
         code_runner_chain = code_runner_prompt | self.llm.with_structured_output(
@@ -303,7 +308,7 @@ class SoftwareDeveloper:
                 (
                     "system",
                     """
-                    You are a coding assistant with expertise in the following language:  
+                    You are a coding assistant specialist with expertise in the following language:
                     \n ------- \n  {technology} \n ------- \n 
                     Answer the user question based on the programming language. \n
                     Ensure any code you provide can be executed 
@@ -316,7 +321,7 @@ class SoftwareDeveloper:
                     1. Define the error type: dependencies or code.\n
                     """,
                 ),
-                #("placeholder", "{messages}"),
+                ("placeholder", "{messages}"),
             ]
         )
         fix_code_chain = fix_code_prompt | self.llm.with_structured_output(
@@ -331,7 +336,7 @@ class SoftwareDeveloper:
                 (
                     "system",
                     """
-                    You are a coding assistant with expertise in the following language:  
+                    You are a coding assistant specialist with expertise in the following language:
                     \n ------- \n  {technology} \n ------- \n 
                     Ensure any code you provide can be executed 
                     with all required imports and variables defined. \n
@@ -346,7 +351,7 @@ class SoftwareDeveloper:
                     2. Return the list of code(s) to be fixed.\n
                     """,
                 ),
-                #("placeholder", "{messages}"),
+                ("placeholder", "{messages}"),
             ]
         )
         fix_code_chain = fix_code_prompt | self.llm.with_structured_output(
@@ -437,11 +442,11 @@ class SoftwareDeveloper:
                 code_solution.project_name), 
                 exist_ok = True
                 )
-        for filename, code in zip(code_solution.filenames, code_solution.codes):
-            with open(self.project_folder / os.path.join(
+        for filename, imports, code in zip(code_solution.filenames, code_solution.imports, code_solution.codes):
+            with open(str(self.project_folder / os.path.join(
                 code_solution.project_name, 
-                filename), "w") as file:
-                file.write(code)
+                filename)), "w") as file:
+                file.write(imports + "\n\n" + code)
         #------------
         messages += [
             (
@@ -471,12 +476,12 @@ class SoftwareDeveloper:
             ("Code description", True),
             messages[-1][0],
             )]
-        for filename, code in zip(code_solution.filenames, code_solution.codes):
+        for filename, imports, code in zip(code_solution.filenames, code_solution.imports, code_solution.codes):
             messages += [
                 (
                     "assistant",
                     f"""
-                    **Codes:**\n```{self.technology.lower()}\n\n{code}\n\n```\n
+                    **Codes:**\n```{self.technology.lower()}\n\n{imports}\n\n{code}\n\n```\n
                     """
                 )
             ]
@@ -504,7 +509,6 @@ class SoftwareDeveloper:
         dependencies = self.dep_checker_chain.invoke({
             "technology": self.technology,
             "imports": code_solution.imports,
-            #"code": code_solution.codes,
             "messages": messages,
         })
         dependencies_commands = dependencies.dependencies_commands
@@ -531,7 +535,15 @@ class SoftwareDeveloper:
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         dependencies = state["dependencies"]
+        project_name = state["project_name"]
         streamlit_action = []
+        code_solution = {}
+        code_solution["filenames"] = os.listdir(str(self.project_folder / project_name))
+        def replace_path_on_command(_term):
+            if _term in code_solution["filenames"]:
+                return str(self.project_folder / os.path.join(project_name, _term))
+            return _term
+        dependencies = " ".join([replace_path_on_command(x) for x in dependencies.split()])
         command_status = subprocess.run(
             dependencies,
             shell = True,
@@ -596,6 +608,7 @@ class SoftwareDeveloper:
         messages = state["messages"]
         streamlit_actions = state["streamlit_actions"]
         error_message = state["error_message"]
+        project_name = state["project_name"]
         fix_dependencies_iterations = state["fix_dependencies_iterations"]
         streamlit_action = []
         #------------------------------------------------------------------------------
@@ -616,8 +629,15 @@ class SoftwareDeveloper:
             (f"Dependencies command fix to be run - attempt {fix_dependencies_iterations + 1}", True),
             messages[-1][0],
         )]
+        code_solution = {}
+        code_solution["filenames"] = os.listdir(str(self.project_folder / project_name))
+        def replace_path_on_command(_term):
+            if _term in code_solution["filenames"]:
+                return str(self.project_folder / os.path.join(project_name, _term))
+            return _term
+        command_result_content = " ".join([replace_path_on_command(x) for x in command_result.content.split()])
         command_status = subprocess.run(
-            command_result.content,
+            command_result_content,
             shell = True,
             capture_output = True,
             text = True
