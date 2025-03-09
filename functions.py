@@ -172,34 +172,6 @@ def settings():
                 step = 0.01
             )
             toggle_filters = st.columns(3)
-            try:
-                memory_filter = toggle_filters[0].toggle(
-                    label = "Memory",
-                    value = st.session_state["memory_filter"]
-                )
-            except:
-                memory_filter = toggle_filters[0].toggle(
-                    label = "Memory",
-                    value = True
-                )
-            try:
-                vector_database_filter = toggle_filters[1].toggle(
-                    label = "Vector database",
-                    value = st.session_state["vector_database_filter"]
-                )
-            except:
-                vector_database_filter = toggle_filters[1].toggle(
-                    label = "Vector database",
-                )
-            try:
-                rag_filter = toggle_filters[2].toggle(
-                    label = "RAG",
-                    value = st.session_state["rag_filter"]
-                )
-            except:
-                rag_filter = toggle_filters[2].toggle(
-                    label = "RAG",
-                )
             submit_button = st.form_submit_button(
                     label = "Run model",
                     use_container_width = True
@@ -222,9 +194,6 @@ def settings():
                     )
                 st.session_state["model_name"] = models_filter
                 st.session_state["temperature_filter"] = temperature_filter
-                st.session_state["memory_filter"] = memory_filter
-                st.session_state["vector_database_filter"] = vector_database_filter
-                st.session_state["rag_filter"] = rag_filter
                 st.rerun()
     elif framework_option in [
         "Groq",
@@ -311,34 +280,6 @@ def settings():
                 os.environ["SCW_ACCESS_KEY"] = SCW_ACCESS_KEY
                 os.environ["SCW_SECRET_KEY"] = SCW_SECRET_KEY
             toggle_filters = st.columns(3)
-            try:
-                memory_filter = toggle_filters[0].toggle(
-                    label = "Memory",
-                    value = st.session_state["memory_filter"]
-                )
-            except:
-                memory_filter = toggle_filters[0].toggle(
-                    label = "Memory",
-                    value = True
-                )
-            try:
-                vector_database_filter = toggle_filters[1].toggle(
-                    label = "Vector database",
-                    value = st.session_state["vector_database_filter"]
-                )
-            except:
-                vector_database_filter = toggle_filters[1].toggle(
-                    label = "Vector database",
-                )
-            try:
-                rag_filter = toggle_filters[2].toggle(
-                    label = "RAG",
-                    value = st.session_state["rag_filter"]
-                )
-            except:
-                rag_filter = toggle_filters[2].toggle(
-                    label = "RAG",
-                )
             submit_button = st.form_submit_button(
                     label = "Run model",
                     use_container_width = True
@@ -346,16 +287,15 @@ def settings():
             if submit_button:
                 st.session_state["model_name"] = models_option
                 st.session_state["temperature_filter"] = temperature_filter
-                st.session_state["memory_filter"] = memory_filter
-                st.session_state["vector_database_filter"] = vector_database_filter
-                st.session_state["rag_filter"] = rag_filter
                 st.rerun()
             
 
 
 @st.dialog("Application graph", width = "large")
 def view_application_graph(graph):
-    st.image(graph.get_graph(xray = True).draw_mermaid_png())
+    st.image(graph.get_graph(
+        #xray = True
+        ).draw_mermaid_png())
 
 
 @st.dialog("Application graphs", width = "large")
@@ -363,7 +303,9 @@ def view_application_graphs(graph_dict):
     cols = st.columns(len(graph_dict))
     for i, (key, value) in enumerate(graph_dict.items()):
         cols[i].header(key)
-        cols[i].image(value.get_graph(xray = True).draw_mermaid_png())
+        cols[i].image(value.get_graph(
+            #xray = True
+            ).draw_mermaid_png())
 
 
 @st.dialog("Neo4J Context Graph", width = "large")

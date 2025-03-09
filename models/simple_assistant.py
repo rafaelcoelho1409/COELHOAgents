@@ -103,7 +103,7 @@ class SimpleAssistant:
         self.graph_builder.add_edge(START, "chatbot")
         #self.graph_builder.add_edge("chatbot", END)
         self.graph = self.graph_builder.compile(
-            checkpointer = self.shared_memory
+            checkpointer = st.session_state["shared_memory"]#self.shared_memory
         )
 
     def route_tools(

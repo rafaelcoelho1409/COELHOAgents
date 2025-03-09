@@ -37,7 +37,9 @@ try:
 except:
     pass
 
+#st.session_state["shared_memory"] = MemorySaver()
+
 if prompt := st.chat_input():
-    if st.session_state["memory_filter"] == False:
-        st.session_state["shared_memory"] = MemorySaver()
+    #if st.session_state["memory_filter"] == False:
+    #    st.session_state["shared_memory"] = MemorySaver()
     role.stream_graph_updates(prompt)
