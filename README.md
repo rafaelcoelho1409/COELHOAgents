@@ -1,3 +1,4 @@
+![COELHO Agents](assets/coelho_agents_logo.png)
 # COELHO Agents
 Complete demonstration on YouTube: [COELHO Agents Presentation](https://www.youtube.com/watch?v=lxXcUA0jmcM)
 
