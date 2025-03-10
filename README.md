@@ -32,6 +32,7 @@ About Ollama, you can install LLM local models through [Ollama Models](https://o
 2) Enter this repository folder:  
 > cd COELHOAgents  
 3) Install UV for Python libraries management - [UV install](https://docs.astral.sh/uv/getting-started/installation/)  
+4) Install Neo4J to use graph database on YouTube Content Search - [Neo4J](https://neo4j.com/docs/operations-manual/current/installation/)
 4) Set a virtual environment and install requeriments  
 > uv venv  
 > source .venv/bin/activate  
